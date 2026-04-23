@@ -1,0 +1,230 @@
+// Leadway Wellness Portal — Prisma Schema
+// Azure SQL (production) / PostgreSQL (Render prototype)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ENROLLEE
+  PROVIDER
+  ADVOCATE
+}
+
+enum OtpPurpose {
+  AUTH
+  SESSION
+}
+
+enum SessionStatus {
+  CONFIRMED
+  PENDING
+  FLAGGED
+  CANCELLED
+}
+
+enum ClaimStatus {
+  PENDING
+  SUBMITTED
+  APPROVED
+  REJECTED
+  REVERSED
+}
+
+enum FwaStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  ESCALATED
+}
+
+model Member {
+  id               String   @id @default(cuid())
+  memberRef        String   @unique // e.g. "21000645/0" or "LWH-004822"
+  firstName        String
+  lastName         String
+  phone            String   @unique
+  email            String?  @unique
+  role             Role     @default(ENROLLEE)
+  isActive         Boolean  @default(true)
+  sessionsPerMonth Int      @default(12)
+  sessionsUsed     Int      @default(0)
+  resetDate        DateTime? // next monthly reset
+  spouseId         String?  // linked spouse member id
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  sessions         Session[]
+  otpRecords       OtpRecord[]
+  auditLogs        AuditLog[]
+  ratings          GymRating[]
+  refreshTokens    RefreshToken[]
+
+  @@index([phone])
+  @@index([memberRef])
+  @@map("members")
+}
+
+model Provider {
+  id        String   @id @default(cuid())
+  gymCode   String   @unique // e.g. "GYM-001"
+  gymName   String
+  phone     String   @unique
+  email     String   @unique
+  location  String
+  lga       String
+  state     String   @default("Lagos")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions  Session[]
+  claims    Claim[]
+  fwaCases  FwaCase[]
+
+  @@index([gymCode])
+  @@map("providers")
+}
+
+model Session {
+  id               String        @id @default(cuid())
+  memberId         String
+  providerId       String
+  sessionOtpId     String        // references OtpRecord used for this session
+  status           SessionStatus @default(PENDING)
+  whatsappVerified Boolean       @default(false)
+  fwaFlagged       Boolean       @default(false)
+  sessionDate      DateTime      @default(now())
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  member   Member   @relation(fields: [memberId], references: [id])
+  provider Provider @relation(fields: [providerId], references: [id])
+  claim    Claim?
+  rating   GymRating?
+  fwaCase  FwaCase?
+
+  @@index([memberId])
+  @@index([providerId])
+  @@index([sessionDate])
+  @@map("sessions")
+}
+
+model OtpRecord {
+  id        String     @id @default(cuid())
+  memberId  String?
+  phone     String
+  otpHash   String     // bcrypt hash — never store plaintext
+  purpose   OtpPurpose
+  expiresAt DateTime
+  usedAt    DateTime?
+  attempts  Int        @default(0) // track brute-force attempts
+  ipAddress String?
+  createdAt DateTime   @default(now())
+
+  member Member? @relation(fields: [memberId], references: [id])
+
+  @@index([phone, purpose])
+  @@index([expiresAt])
+  @@map("otp_records")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  memberId  String
+  tokenHash String   @unique // SHA-256 hash of the token
+  expiresAt DateTime
+  revokedAt DateTime?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  member Member @relation(fields: [memberId], references: [id])
+
+  @@index([memberId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  userRole   String?
+  action     String   // e.g. "AUTH_LOGIN", "OTP_GENERATE", "SESSION_VALIDATE"
+  resource   String   // e.g. "auth", "member", "provider"
+  resourceId String?
+  ipAddress  String
+  userAgent  String?
+  status     String   // "SUCCESS" | "FAILURE"
+  details    Json?    // additional context (sanitised — no PII)
+  timestamp  DateTime @default(now())
+
+  member Member? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+model Claim {
+  id          String      @id @default(cuid())
+  sessionId   String      @unique
+  providerId  String
+  amount      Float
+  status      ClaimStatus @default(PENDING)
+  submittedAt DateTime?
+  processedAt DateTime?
+  payAdviceRef String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  session  Session  @relation(fields: [sessionId], references: [id])
+  provider Provider @relation(fields: [providerId], references: [id])
+
+  @@index([providerId])
+  @@index([status])
+  @@map("claims")
+}
+
+model FwaCase {
+  id          String    @id @default(cuid())
+  caseRef     String    @unique // e.g. "FWA-2026-041"
+  memberId    String
+  providerId  String
+  sessionId   String?   @unique
+  flagType    String    // "MEMBER_DENIED_VISIT" | "PROVIDER_GENERATED_OTP" | etc.
+  status      FwaStatus @default(OPEN)
+  description String
+  investigatorId String? // advocate userId
+  createdAt   DateTime  @default(now())
+  resolvedAt  DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  provider Provider @relation(fields: [providerId], references: [id])
+  session  Session? @relation(fields: [sessionId], references: [id])
+
+  @@index([status])
+  @@index([memberId])
+  @@map("fwa_cases")
+}
+
+model GymRating {
+  id         String   @id @default(cuid())
+  memberId   String
+  sessionId  String   @unique
+  providerId String
+  rating     Int      // 1–5 stars
+  createdAt  DateTime @default(now())
+
+  member  Member  @relation(fields: [memberId], references: [id])
+  session Session @relation(fields: [sessionId], references: [id])
+
+  @@index([providerId])
+  @@map("gym_ratings")
+}

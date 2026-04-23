@@ -1,0 +1,88 @@
+# Render deployment configuration
+# Docs: https://render.com/docs/render-yaml-reference
+
+services:
+  # ─── Backend API ──────────────────────────────────────────────────────────
+  - type: web
+    name: lwh-wellness-api
+    runtime: node
+    region: oregon
+    plan: starter
+    rootDir: backend
+    buildCommand: npm install && npm run db:generate && npm run build && npm run db:migrate
+    startCommand: node dist/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lwh-wellness-db
+          property: connectionString
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRY
+        value: 15m
+      - key: JWT_REFRESH_EXPIRY
+        value: 7d
+      # CORS_ORIGIN will be set manually after frontend deploys
+      - key: CORS_ORIGIN
+        value: https://lwh-wellness-portal.onrender.com
+      - key: OTP_EXPIRY_MINUTES
+        value: 120
+      - key: OTP_MAX_ATTEMPTS
+        value: 5
+      - key: BCRYPT_ROUNDS
+        value: 12
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_AUTH_MAX
+        value: 5
+      - key: RATE_LIMIT_API_MAX
+        value: 100
+      # NEVER set OTP_VISIBLE_IN_DEV=true in production
+      - key: OTP_VISIBLE_IN_DEV
+        value: "false"
+
+  # ─── Frontend ─────────────────────────────────────────────────────────────
+  - type: web
+    name: lwh-wellness-portal
+    runtime: static
+    region: oregon
+    plan: starter
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(), microphone=(), geolocation=()
+    routes:
+      # SPA routing — all routes serve index.html
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        value: https://lwh-wellness-api.onrender.com/api
+
+  # ─── Database ─────────────────────────────────────────────────────────────
+databases:
+  - name: lwh-wellness-db
+    region: oregon
+    plan: starter
+    databaseName: lwh_wellness
+    user: lwh_user
