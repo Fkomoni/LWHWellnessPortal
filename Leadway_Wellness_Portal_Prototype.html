@@ -1,0 +1,2230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Leadway Wellness Portal — Interactive Prototype</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+
+  :root {
+    --red: #C8102E;
+    --navy: #1A1A2E;
+    --orange: #E87722;
+    --navy2: #16213E;
+    --navy3: #0F3460;
+    --white: #ffffff;
+    --grey1: #F8F9FB;
+    --grey2: #EEF0F4;
+    --grey3: #D1D5DB;
+    --grey4: #6B7280;
+    --grey5: #374151;
+    --green: #10B981;
+    --amber: #F59E0B;
+    --blue: #3B82F6;
+    --purple: #8B5CF6;
+    --rose: #F43F5E;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--grey1);
+    color: var(--grey5);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ─── ROLE SELECTOR ─────────────────────────────── */
+  .role-selector {
+    background: var(--navy);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 28px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    min-height: 60px;
+  }
+
+  .logo-wrap img {
+    height: 34px;
+    width: auto;
+    max-width: 180px;
+    object-fit: contain;
+    display: block;
+    filter: brightness(1.1);
+  }
+
+  .portal-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.4);
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding-left: 20px;
+  }
+
+  .role-tabs {
+    display: flex;
+    align-items: stretch;
+  }
+
+  .role-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 16px 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-bottom: 3px solid transparent;
+    color: rgba(255,255,255,0.5);
+    position: relative;
+    background: transparent;
+    border-left: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .role-tab:first-child { border-left: none; }
+
+  .role-tab:hover {
+    background: rgba(255,255,255,0.05);
+    color: rgba(255,255,255,0.8);
+  }
+
+  .role-tab.active {
+    color: var(--white);
+    border-bottom-color: var(--orange);
+    background: rgba(255,255,255,0.04);
+  }
+
+  .role-tab .tab-icon {
+    font-size: 20px;
+  }
+
+  .role-tab .tab-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  .role-tab .tab-sub {
+    font-size: 10px;
+    font-weight: 400;
+    opacity: 0.7;
+  }
+
+  .role-tab.active .tab-sub {
+    color: var(--orange);
+    opacity: 1;
+  }
+
+  /* ─── PORTAL VIEWS ─────────────────────────────── */
+  .portal-view {
+    display: none;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .portal-view.active {
+    display: block;
+  }
+
+  @keyframes fadeIn {
+    from { opacity:0; transform: translateY(6px); }
+    to { opacity:1; transform: translateY(0); }
+  }
+
+  /* ─── LAYOUT ─────────────────────────────── */
+  .layout {
+    display: flex;
+    min-height: calc(100vh - 100px);
+  }
+
+  /* ─── SIDEBAR ─────────────────────────────── */
+  .sidebar {
+    width: 240px;
+    background: var(--white);
+    border-right: 1px solid var(--grey2);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    height: calc(100vh - 100px);
+    overflow-y: auto;
+  }
+
+  .sidebar-section {
+    padding: 16px 0 8px;
+  }
+
+  .sidebar-section-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--grey3);
+    padding: 0 20px 6px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 20px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--grey4);
+    border-left: 3px solid transparent;
+    transition: all 0.15s;
+  }
+
+  .nav-item:hover {
+    background: var(--grey1);
+    color: var(--grey5);
+  }
+
+  .nav-item.active {
+    background: rgba(200,16,46,0.06);
+    color: var(--red);
+    border-left-color: var(--red);
+  }
+
+  .nav-item .ni-icon {
+    font-size: 15px;
+    width: 18px;
+    text-align: center;
+  }
+
+  .nav-badge {
+    margin-left: auto;
+    background: var(--red);
+    color: white;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 10px;
+  }
+
+  .nav-badge.green { background: var(--green); }
+  .nav-badge.amber { background: var(--amber); color: #1a1a1a; }
+
+  /* ─── MAIN CONTENT ─────────────────────────────── */
+  .main-content {
+    flex: 1;
+    padding: 28px 32px;
+    overflow-y: auto;
+  }
+
+  .page-header {
+    margin-bottom: 24px;
+  }
+
+  .page-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 4px;
+  }
+
+  .page-sub {
+    font-size: 13px;
+    color: var(--grey4);
+  }
+
+  /* ─── SCREEN SWITCHER ─────────────────────────────── */
+  .screen { display: none; }
+  .screen.active { display: block; animation: fadeIn 0.25s ease; }
+
+  /* ─── KPI CARDS ─────────────────────────────── */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+
+  .kpi-card {
+    background: var(--white);
+    border-radius: 12px;
+    padding: 18px 20px;
+    border: 1px solid var(--grey2);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--red);
+  }
+
+  .kpi-card.green::before { background: var(--green); }
+  .kpi-card.orange::before { background: var(--orange); }
+  .kpi-card.blue::before { background: var(--blue); }
+  .kpi-card.purple::before { background: var(--purple); }
+
+  .kpi-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--grey4);
+    margin-bottom: 8px;
+  }
+
+  .kpi-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--navy);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .kpi-sub {
+    font-size: 11px;
+    color: var(--grey4);
+  }
+
+  /* ─── CARDS / PANELS ─────────────────────────────── */
+  .card {
+    background: var(--white);
+    border-radius: 12px;
+    border: 1px solid var(--grey2);
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+
+  .card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--grey2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .card-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--navy);
+  }
+
+  .card-sub {
+    font-size: 12px;
+    color: var(--grey4);
+    margin-top: 2px;
+  }
+
+  .card-body { padding: 20px; }
+
+  /* ─── TABLES ─────────────────────────────── */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .data-table th {
+    text-align: left;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--grey4);
+    padding: 10px 14px;
+    background: var(--grey1);
+    border-bottom: 1px solid var(--grey2);
+  }
+
+  .data-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--grey2);
+    color: var(--grey5);
+  }
+
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: var(--grey1); }
+
+  /* ─── BADGES ─────────────────────────────── */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .badge-green { background: rgba(16,185,129,0.1); color: #059669; }
+  .badge-red { background: rgba(200,16,46,0.1); color: var(--red); }
+  .badge-amber { background: rgba(245,158,11,0.1); color: #D97706; }
+  .badge-blue { background: rgba(59,130,246,0.1); color: #2563EB; }
+  .badge-grey { background: var(--grey2); color: var(--grey4); }
+  .badge-purple { background: rgba(139,92,246,0.1); color: #7C3AED; }
+
+  /* ─── BUTTONS ─────────────────────────────── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+    text-decoration: none;
+    font-family: inherit;
+  }
+
+  .btn-primary {
+    background: var(--red);
+    color: white;
+  }
+
+  .btn-primary:hover { background: #a00d25; }
+
+  .btn-secondary {
+    background: var(--grey2);
+    color: var(--grey5);
+  }
+
+  .btn-secondary:hover { background: var(--grey3); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--red);
+    border: 1.5px solid var(--red);
+  }
+
+  .btn-ghost:hover { background: rgba(200,16,46,0.06); }
+
+  .btn-sm { padding: 5px 10px; font-size: 11px; }
+  .btn-lg { padding: 11px 22px; font-size: 14px; }
+
+  /* ─── OTP BOX ─────────────────────────────── */
+  .otp-display {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy3) 100%);
+    border-radius: 14px;
+    padding: 28px;
+    text-align: center;
+    color: white;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .otp-display::before {
+    content: '';
+    position: absolute;
+    top: -30px; right: -30px;
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    background: rgba(232,119,34,0.15);
+  }
+
+  .otp-code {
+    font-family: 'DM Mono', monospace;
+    font-size: 42px;
+    font-weight: 500;
+    letter-spacing: 8px;
+    color: var(--orange);
+    margin: 12px 0;
+    position: relative;
+  }
+
+  .otp-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    opacity: 0.6;
+  }
+
+  .otp-timer {
+    font-size: 12px;
+    opacity: 0.7;
+    margin-top: 8px;
+  }
+
+  .otp-timer span {
+    color: var(--orange);
+    font-weight: 700;
+  }
+
+  /* ─── GYM MAP PLACEHOLDER ─────────────────────────────── */
+  .gym-map {
+    background: linear-gradient(135deg, #e8f4fd, #d4e9f7);
+    border-radius: 10px;
+    height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--grey4);
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid var(--grey3);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .map-pin {
+    position: absolute;
+    font-size: 22px;
+    cursor: pointer;
+    transition: transform 0.2s;
+  }
+
+  .map-pin:hover { transform: scale(1.3); }
+
+  /* ─── GYM CARDS ─────────────────────────────── */
+  .gym-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+  }
+
+  .gym-card {
+    background: var(--white);
+    border-radius: 12px;
+    border: 1px solid var(--grey2);
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .gym-card:hover {
+    border-color: var(--red);
+    box-shadow: 0 4px 16px rgba(200,16,46,0.1);
+    transform: translateY(-2px);
+  }
+
+  .gym-name { font-size: 14px; font-weight: 700; color: var(--navy); }
+  .gym-location { font-size: 12px; color: var(--grey4); margin: 3px 0 8px; }
+
+  .gym-stars { color: var(--orange); font-size: 13px; }
+  .gym-meta { font-size: 11px; color: var(--grey4); margin-top: 6px; }
+
+  /* ─── SEARCH BAR ─────────────────────────────── */
+  .search-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--white);
+    border: 1.5px solid var(--grey2);
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    transition: border-color 0.15s;
+  }
+
+  .search-bar:focus-within { border-color: var(--red); }
+
+  .search-bar input {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--grey5);
+    background: transparent;
+  }
+
+  /* ─── TIMELINE ─────────────────────────────── */
+  .timeline {
+    position: relative;
+    padding-left: 24px;
+  }
+
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 6px; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--grey2);
+  }
+
+  .tl-item {
+    position: relative;
+    padding: 0 0 20px 16px;
+  }
+
+  .tl-item::before {
+    content: '';
+    position: absolute;
+    left: -18px; top: 4px;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--grey3);
+    border: 2px solid var(--white);
+  }
+
+  .tl-item.confirmed::before { background: var(--green); }
+  .tl-item.flagged::before { background: var(--red); }
+  .tl-item.pending::before { background: var(--amber); }
+
+  .tl-title { font-size: 13px; font-weight: 600; color: var(--grey5); }
+  .tl-meta { font-size: 11px; color: var(--grey4); margin-top: 2px; }
+
+  /* ─── FWA DASHBOARD ─────────────────────────────── */
+  .fwa-case {
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--grey2);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    background: var(--white);
+  }
+
+  .fwa-icon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    background: rgba(200,16,46,0.1);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+
+  /* ─── PROGRESS BAR ─────────────────────────────── */
+  .progress-bar {
+    background: var(--grey2);
+    border-radius: 20px;
+    height: 6px;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+
+  .progress-fill {
+    height: 100%;
+    border-radius: 20px;
+    background: var(--red);
+    transition: width 0.5s ease;
+  }
+
+  .progress-fill.green { background: var(--green); }
+  .progress-fill.orange { background: var(--orange); }
+
+  /* ─── SESSION COUNTER ─────────────────────────────── */
+  .session-counter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+
+  .session-dot {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--green);
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 10px; font-weight: 700;
+    transition: all 0.2s;
+  }
+
+  .session-dot.used {
+    background: var(--grey2);
+    color: var(--grey4);
+  }
+
+  /* ─── NOTIFICATION PILL ─────────────────────────────── */
+  .notif-pill {
+    background: var(--grey1);
+    border: 1px solid var(--grey2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 12px;
+  }
+
+  .notif-pill .notif-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  /* ─── CLAIM VALIDATION FLOW ─────────────────────────────── */
+  .otp-input-field {
+    display: flex;
+    gap: 8px;
+    margin: 16px 0;
+  }
+
+  .otp-input-field input {
+    width: 48px; height: 56px;
+    border: 2px solid var(--grey2);
+    border-radius: 10px;
+    text-align: center;
+    font-size: 20px;
+    font-weight: 700;
+    font-family: 'DM Mono', monospace;
+    color: var(--navy);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .otp-input-field input:focus { border-color: var(--red); }
+
+  /* ─── ALERT BOX ─────────────────────────────── */
+  .alert {
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 13px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .alert-success { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.3); color: #065F46; }
+  .alert-warning { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); color: #92400E; }
+  .alert-danger  { background: rgba(200,16,46,0.08);  border: 1px solid rgba(200,16,46,0.3);  color: var(--red); }
+  .alert-info    { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.3); color: #1E40AF; }
+
+  .alert-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+  /* ─── TECH SCOPING ─────────────────────────────── */
+  .tech-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+
+  .tech-card {
+    background: var(--white);
+    border-radius: 12px;
+    border: 1px solid var(--grey2);
+    padding: 20px;
+  }
+
+  .tech-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .tech-icon-box {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+  }
+
+  .tech-icon-box.red { background: rgba(200,16,46,0.1); }
+  .tech-icon-box.blue { background: rgba(59,130,246,0.1); }
+  .tech-icon-box.green { background: rgba(16,185,129,0.1); }
+  .tech-icon-box.orange { background: rgba(232,119,34,0.1); }
+  .tech-icon-box.purple { background: rgba(139,92,246,0.1); }
+  .tech-icon-box.navy { background: rgba(26,26,46,0.1); }
+
+  .tech-card-title { font-size: 14px; font-weight: 700; color: var(--navy); }
+  .tech-card-sub { font-size: 11px; color: var(--grey4); }
+
+  .tech-stack-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .tech-chip {
+    background: var(--grey1);
+    border: 1px solid var(--grey2);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--grey5);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .tech-chip.highlight {
+    background: rgba(200,16,46,0.06);
+    border-color: rgba(200,16,46,0.2);
+    color: var(--red);
+  }
+
+  .phase-list { list-style: none; }
+  .phase-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--grey2);
+    font-size: 12px;
+    color: var(--grey5);
+  }
+  .phase-list li:last-child { border-bottom: none; }
+  .phase-num {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--red);
+    color: white;
+    font-size: 9px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  /* ─── WHATSAPP CONFIRMATION MODAL ─────────────────────────────── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(26,26,46,0.6);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .modal-overlay.active { display: flex; animation: fadeIn 0.2s ease; }
+
+  .modal {
+    background: var(--white);
+    border-radius: 16px;
+    padding: 28px;
+    max-width: 380px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  }
+
+  .modal-icon { font-size: 48px; margin-bottom: 14px; }
+  .modal-title { font-size: 17px; font-weight: 700; color: var(--navy); margin-bottom: 8px; }
+  .modal-body { font-size: 13px; color: var(--grey4); line-height: 1.5; margin-bottom: 20px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: center; }
+
+  /* ─── CLAIM STATUS STEPPER ─────────────────────────────── */
+  .stepper {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    margin: 16px 0;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    min-width: 80px;
+    position: relative;
+  }
+
+  .step::before {
+    content: '';
+    position: absolute;
+    top: 14px; left: 50%;
+    width: 100%; height: 2px;
+    background: var(--grey2);
+    z-index: 0;
+  }
+
+  .step:last-child::before { display: none; }
+
+  .step-circle {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--grey2);
+    color: var(--grey4);
+    font-size: 11px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    position: relative; z-index: 1;
+    transition: all 0.3s;
+  }
+
+  .step.done .step-circle { background: var(--green); color: white; }
+  .step.current .step-circle { background: var(--red); color: white; box-shadow: 0 0 0 4px rgba(200,16,46,0.2); }
+
+  .step-label {
+    font-size: 10px;
+    color: var(--grey4);
+    margin-top: 6px;
+    text-align: center;
+    font-weight: 500;
+  }
+
+  .step.done .step-label { color: var(--green); }
+  .step.current .step-label { color: var(--red); font-weight: 700; }
+
+  /* ─── RESPONSIVE GRID ─────────────────────────────── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  @media (max-width: 900px) {
+    .two-col, .three-col { grid-template-columns: 1fr; }
+    .sidebar { width: 200px; }
+    .main-content { padding: 20px 18px; }
+  }
+
+  /* ─── SCROLLBAR ─────────────────────────────── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--grey3); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ROLE SELECTOR / TOP NAV -->
+<div class="role-selector">
+  <div class="top-bar">
+    <div class="logo-wrap">
+      <img src="data:image/png;base64,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e+65uXPn5vN5t5kQJQhLn5/asH0dFysKlUAcb8aURgCIdXAiqwWMsSiIyJISFXLEFFK+UZmS1eUwTGupT0loKhVrWZEXqb+jRB36gEhADsSOu//dHAYkBCBkdqQOB3ATEoigRLeWJEqLkcmRPcDZuZP1QBCxIoICYglQSKET2UIBQGZgZCJlAs7Wd3z95JZzftYqmNuUCo9T1V2wYMFjjz121FFHbWGXkrvnf/nLX84++2w3/A0RrbUjRox48cUXncj2gHvRPfHHP/7xDTfc4J64mXdRSgVBcPbZZ//617/e1IW5TbZy5cp99923p6en9le33377SSedtJlPRESf/vSnZ8+e7YZgDfjKWmvP8xobG6dOnbrbbrsdcsgh06ZN832/dqCce2S5XD7kkENWrVqVIILuDtx333377rtv7YNF5POf//zs2bMTNquIpNPp559/fuLEif25ca4rdubMmV/4whfcU9xwrD322OPhhx/uf4c9z/vd7373ox/9qPbnU6dOnTNnjud5iVm6tz7//PMfeuihdDqdDJ0Ow3DGjBn33HNP/y/RPbe1tXX//fdvbW11lu/mcg0ZMuT555938NOmjiG9qdMXAO699162VgEaVAps1dB2dfq4SXVBUEFCQias6Q0CiloRMDpRnI25aqzrWGBCIAEGpbTKZJ9dXp01f/2S9mpHOajL+HuOyRwzrXm7RlOqlsR5T0pAKXZht3XhN1mIkWZBNMgIHNWkXHlHWBQKSXLAOMAZSQSdYocSFEMEEGogzHngaeAQUEBrCKvVqnEtidpP6SwD5gFII0PYftBe6Rl7p2a9UGlM5yoghAHIwLfxnnvuOeqoo7YwB3YbNAzD3t7e2p9nMpkteYVisdjb27slHlhESqXSptLLZL/edtttPT09vu87sSTHTrnppptOOumkzWSJAFCpVPp8hAHXmjVr5s2bd/fdd//gBz+YNm3aGWeccc4556RSKddZ7Q6vxsbGgw466Kqrrko+l/vL7bffvt9++yXX7y74yCOPfPzxx2sf2d3dPWvWrK9+9av9B00mO7ynp8c9xf15xBFH9Blq52h25XL5j3/8owtuY3+G8+fPf/XVV/fcc08nUJMckT/60Y8eeeSR9vb22ne8995777nnnuOPP77P8efM9eKLL164cGGfj3n99dcPGzZs88xc2lTy09ra+txzz2ay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5fJDDz1Uy7s+5phj+jC33d9vuummYrGY1OGPPPLIIUOGVKvVMAx33HHHHXfc0d03F7SvXbv2rrvuGhAXcJHzV77ylb333tvF8InjdafA5z//+U996lNbdzOpzzsx84IFC30/JcwMklHVXYfkSAwr49TgYgKyWAqVR51Y/52nlz69RucKaQ9KzIBiPYXZtJ9LKU1oAAisRRpQVPmDWggUingcZAtDL3+451d3daRSDSFpFetzEZKbv4IIbtZC3PhgA8u12auAcqxpG9gp4yjtufp6SJEuZiwLhgKKgcs7TMLmprIxPKB5OktYuHChKyT+KzU6rLVhzXIlnHK57P7sD1/dcsst7e3tzv2KyOGHHz516lQiSqfTRHT88cc7Xm5CGPrHP/7x6KOPJo7o/awEDa49s2pPmQSLTqq7LuZfvny5y0XXrl2bkN5E5Atf+EJLS0ttMj9v3jyXzb744otLlixJalRKKUefrK0eOWzZIeHuYVrr888/HxHdCZhKpU499dQNvEMRhwsMmPIkqf4ll1ySTqdreZfMPHXq1N/+9rf92drvGcRy50Fvb29nd6dSCACG7SgfxtZRVawGBYBRFz4oZpPxaC1l/+fRRc+ttNls3rCliHBFAGAlka0QBJf3/hNnjjhZHBZCtrmG+qsfWN+UT511bNZ296AnQAjCCIxxi4VT20FhQK8sAbLaoAEEIkgowigmtOJUgYCcoBcKCDmtaUCyHPLw4eF2YzPP/sPqHKFBIUcQl9ogqqurq7u7222pf8FyO+OYY445+eST3cFhjCmXy+Vy2RjT09NzwAEH9IlRS6XSDTfckGx3RNxvv/3eeust5xbcMbTTTju1trY6i3VchWuvvfbwww9/3/GTuNpPEhuLSF1d3fjx45MfurNvxowZY8eOXbZsWdKyY4y566679txzz0cffXTdunWOMpHNZr/2ta/NnTt39erV7mpdD9aDDz44ffr0Rx99NAG6rLW77777Lrvs0od9pbW+/fbbly1blgTkI0eOXL58+cqVK5OApTYQSBCEOXPmTJs2rb8vdZe61157HXvssbfddluCZhljTjzxxMbGxq0ejqf7hGrd3d1dnR1aEQJay+Ma001ZzSZAJEa2ipSIliqkM6tt9kcPL3qiFerTObahIG3CRPGfarq1b+O0Zr3QYnboL+9eN2rE8E9Oz4flIiohsiS+YDyjEAHAuElMpd7KxiqTTgNIo+hMmpBMLHAbTzlNPhMCW9J1NHG8fvplg5AVYAeS94lOe3t7Ozo6Wlpa/jXDk5wBT58+3XmJTZlNwovQWt9///0LFixICjBE9JOf/OQHP/hBbVOrKyA7f+sArYceemjx4sUTJ07c6s/lnvi3v/2tjwFvs802Dl5OfmitLRQKhx56qKMTO0QdAFwH0gMPPOCu0LUEjhw58uijj3Z1pmRvP/bYYz/84Q+ffvrpxOQA4Pjjj+/TfuRe5Iorrqh97vLlyx1w1ec+J8Cbe5Frr732sssu28yHbWxs7J9MvZ+4rK/XXr9+fbHYqxQ5vtPYvMoSM1gQRBItAlZUurAy1N98eNEza3QhlQ/BGvwQTeULyBKG1qv76Y3rFq/zvRRISJaQKYjFqJ3Ejw+ggJRFLWg3ZjO7VgdpqtfOnuNRbBiNd4r0eiyQBqxO3ZYUONBABowPy+Xy+vXr/8X3oVQqOccb9lt9gl5mvvzyy/tsqWKxGARB8pQgCCqVSp/P1dvbe+uttyZWvRXW60SLHcKUcKocZJXQg2uf4spabse7N12wYMELL7zwzDPPJD8/+eSTReSTn/xkXV1dEvMDwGuvvfbMM88sWLAgCYxr8eQkmyCip5566pVXXumTHaiNl7Pe2r4ihwtsplurD/K/GU7r1hiwe8u1a9dWwxBIAYISHt+UI7AWEEkDiAHJ5DKLus35D6yYvd5LZ1IsAcCHax6fAIlwxoMVvXTB9at7qdnLI7KwMIO4ShgAWGKDDKDXdQBSSja4TQdSCUHY1KiAOBGtBSdnHenUoiOcAQfbTkyl08JiZRMoqzGmtbX1fZ61W+GH9SZW7X7VWr/00kvPPPNMn96jWgg3oXP1kZ4AgBtuuKFPO86WA1eOMPjDH/5w8eLFtY34SqmE7dTH3e23336uvp38qlKp/OEPf1izZo27zw0NDa5APX78+P3337/WT3Z3d99www2uTdf5+T333HPq1Kl9wGFHn+rjJ53B166kZN2nsvXXv/51M1JKH3j81dcD9/b2sGUEFGGfaGSOGJmIBA2AZFLydKv9jwdWLuhRubRmDi0S1Eg4fxiWG4rIFvKZ3DPz7Ln/u/TVhQXlN+m6vM54SoUk1gqLlVR9aslK+8rrvV5aSYwjS6xGqdMyepgGNoQIaDeoAkUCAwJEhBasNNVJOmOZieIacv/N6jpvthqkTfoB3UqIGY4lvyn/1v+JtfsveeQVV1zRp4CRdFD0b0usvSoiWrx4cdL5sBlPW3sZ7rKVUqlU6rLLLvvNb36T9Ak4NPjYY4/t3yyRqAUec8wxtbYtIrfcckuCER544IFjxoypVqsOXu6D1d122221H+H444+vhbvdVb355pv3339/H/9fKBQKhUIqlXIYfjabra+v76OV4b6IK664Iuki7H8rwjD8YHd737y5Wq0yCACwSEq40Y8iRwH2Fa0Mcj95auFiLjR51lgL6Mb4ftjkjyNSMzNnMqln3qy+uGjxx6Zm9tuhftdJeptxDfVZ1ArFyutL/AuvemdtSaXSIDYBtBnJBGGqpdGbOI4gDBMpaYwl6eMpalFxqqlB1ddL7xrr6U3uYLelts6Rbr6jcFOHvTPCVCq1GZhaKbVs2bJ7773XWaAzpHPPPffrX/+60/dwpu54y07t6ayzznLSTcne/cMf/nD88cdvRsveXUkfebA333zzV7/61fXXX58QsFwa2djY+L//+7+bEaM8/PDDL7/88trYtVZg5Mgjj0weecQRR9TX13d1dSU99MViMcmos9mss/A+gNPll19ey/Rubm6+5557HJGuWq0GQZAg88aYCy+88LrrrnPcbFdJfvXVVx9//PHDDjtswLKQS0M+wECs744LgtBJKTNgQwobsh5LgAgi4Pnq5UXFlaVUIasC3mw/wodmMWMunWPJPjun+vTf2/MpHjEEhzZSfZ3t6Ja3lvqdFT+bITYb8gAERElXTc8O43VLs5LAEgFE0lyOScqQqE8DMIf1DTBiiP/OikD89KYIZlt99BaLxddff723t9dloUEQuAajxAg/8YlPDBs2rD8o0tra+sYbb3R3d7tgNQiCIAgS1z169Oi9994bEa+55pqenh63BZ0VnX322ZMmTdrU9Vx//fWPPPJIQmlExIcffnjevHlTpkzpn+C51dra+uqrr65fv75arfb09CxfvvyZZ5557LHHnKqGs14XQmez2ZtuumlAFavE6x544IEOi65tRYJYVd+h4u4kGjNmzN577/3ggw8m2Wwii2et3XfffWvfKGmkve2225LjzLUHuVB8wHXaaaddd911fajXV1999WGHHTbg4/sU8D54A44kDgCNhbq8asgQMyMhMDCqua1dFsEHBlGCAvARmDxghQUhk00h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" alt="Leadway Health HMO">
+    </div>
+    <div class="portal-label">Wellness Portal — Interactive Prototype</div>
+  </div>
+  <div class="role-tabs">
+    <div class="role-tab active" onclick="switchPortal('enrollee')">
+      <span class="tab-icon">👤</span>
+      <span class="tab-label">Enrollee</span>
+      <span class="tab-sub">Member Portal</span>
+    </div>
+    <div class="role-tab" onclick="switchPortal('provider')">
+      <span class="tab-icon">🏋️</span>
+      <span class="tab-label">Provider</span>
+      <span class="tab-sub">Gym Portal</span>
+    </div>
+    <div class="role-tab" onclick="switchPortal('advocate')">
+      <span class="tab-icon">🛡️</span>
+      <span class="tab-label">Advocate</span>
+      <span class="tab-sub">Internal Portal</span>
+    </div>
+    <div class="role-tab" onclick="switchPortal('tech')">
+      <span class="tab-icon">⚙️</span>
+      <span class="tab-label">Tech Scope</span>
+      <span class="tab-sub">Architecture</span>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     PORTAL 1: ENROLLEE
+════════════════════════════════════════════════════ -->
+<div id="portal-enrollee" class="portal-view active">
+  <div class="layout">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <div style="padding: 14px 20px; border-bottom: 1px solid var(--grey2); margin-bottom: 8px;">
+          <div style="font-size: 13px; font-weight: 700; color: var(--navy);">Favour Komoni</div>
+          <div style="font-size: 11px; color: var(--grey4);">Member ID: 21000645/0</div>
+          <div style="margin-top: 8px;"><span class="badge badge-green">Leadway Max Plan</span></div>
+        </div>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Main Menu</div>
+        <div class="nav-item active" onclick="enrolleeScreen('dashboard')"><span class="ni-icon">🏠</span> Dashboard</div>
+        <div class="nav-item" onclick="enrolleeScreen('gyms')"><span class="ni-icon">📍</span> Find Gyms</div>
+        <div class="nav-item" onclick="enrolleeScreen('otp')"><span class="ni-icon">🔐</span> Get Session OTP</div>
+        <div class="nav-item" onclick="enrolleeScreen('topup')"><span class="ni-icon">💳</span> Buy More Sessions</div>
+        <div class="nav-item" onclick="enrolleeScreen('history')"><span class="ni-icon">📋</span> Session History</div>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Account</div>
+        <div class="nav-item" onclick="enrolleeScreen('notifications')"><span class="ni-icon">🔔</span> Notifications <span class="nav-badge">3</span></div>
+        <div class="nav-item"><span class="ni-icon">⚙️</span> Settings</div>
+      </div>
+    </div>
+    <!-- MAIN -->
+    <div class="main-content">
+
+      <!-- SCREEN: DASHBOARD -->
+      <div id="e-dashboard" class="screen active">
+        <div class="page-header">
+          <div class="page-title">My Wellness Dashboard</div>
+          <div class="page-sub">Welcome back, Favour — here's your gym benefit summary</div>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi-card green">
+            <div class="kpi-label">Sessions Remaining</div>
+            <div class="kpi-value">6</div>
+            <div class="kpi-sub">of 12 monthly sessions</div>
+            <div class="progress-bar" style="margin-top:10px;"><div class="progress-fill green" style="width:50%"></div></div>
+          </div>
+          <div class="kpi-card orange">
+            <div class="kpi-label">Sessions Used</div>
+            <div class="kpi-value">6</div>
+            <div class="kpi-sub">This month (Apr 2026)</div>
+          </div>
+          <div class="kpi-card blue">
+            <div class="kpi-label">Spouse Sessions</div>
+            <div class="kpi-value">9</div>
+            <div class="kpi-sub">Amaka Adeyemi — 3 used</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Gyms Near You</div>
+            <div class="kpi-value">14</div>
+            <div class="kpi-sub">Lagos Island & Mainland</div>
+          </div>
+        </div>
+
+        <div class="alert alert-info">
+          <span class="alert-icon">ℹ️</span>
+          <div><strong>Benefit Note:</strong> Only principal and spouse are covered. Each member must generate their own OTP. <a href="#" style="color:var(--blue)">Learn more</a></div>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Monthly Sessions</div>
+                <div class="card-sub">April 2026 breakdown</div>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="enrolleeScreen('otp')">Get OTP</button>
+            </div>
+            <div class="card-body">
+              <div style="font-size:12px;color:var(--grey4);margin-bottom:10px;">Your sessions this month</div>
+              <div class="session-counter">
+                <div class="session-dot used">✓</div>
+                <div class="session-dot used">✓</div>
+                <div class="session-dot used">✓</div>
+                <div class="session-dot used">✓</div>
+                <div class="session-dot used">✓</div>
+                <div class="session-dot used">✓</div>
+                <div class="session-dot">7</div>
+                <div class="session-dot">8</div>
+                <div class="session-dot">9</div>
+                <div class="session-dot">10</div>
+                <div class="session-dot">11</div>
+                <div class="session-dot">12</div>
+              </div>
+              <div style="margin-top:14px;font-size:12px;color:var(--grey4);">🗓️ Plan resets on <strong>May 1, 2026</strong></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Recent Activity</div>
+            </div>
+            <div class="card-body" style="padding:0;">
+              <div class="timeline" style="padding: 16px 20px 10px 36px;">
+                <div class="tl-item confirmed">
+                  <div class="tl-title">iFitness Lekki — Session confirmed</div>
+                  <div class="tl-meta">Wednesday, 23 Apr 2026 · OTP: 483291 ✓ WhatsApp verified</div>
+                </div>
+                <div class="tl-item confirmed">
+                  <div class="tl-title">EkoFit V.I. — Session confirmed</div>
+                  <div class="tl-meta">Apr 20, 2026 · OTP: 774102</div>
+                </div>
+                <div class="tl-item confirmed">
+                  <div class="tl-title">FitnessOne Ikeja — Session confirmed</div>
+                  <div class="tl-meta">Apr 17, 2026 · OTP: 332847</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">⭐ Rate Your Last Visit</div>
+            <div class="card-sub">iFitness Lekki — Today</div>
+          </div>
+          <div class="card-body">
+            <div style="font-size:13px;color:var(--grey5);margin-bottom:12px;">How was your experience at iFitness Lekki?</div>
+            <div id="stars" style="font-size:30px;cursor:pointer;letter-spacing:4px;" onmouseleave="resetStars()">
+              <span onclick="rateGym(1)" onmouseover="hoverStars(1)">⭐</span>
+              <span onclick="rateGym(2)" onmouseover="hoverStars(2)">⭐</span>
+              <span onclick="rateGym(3)" onmouseover="hoverStars(3)">⭐</span>
+              <span onclick="rateGym(4)" onmouseover="hoverStars(4)">⭐</span>
+              <span onclick="rateGym(5)" onmouseover="hoverStars(5)">⭐</span>
+            </div>
+            <div id="rating-feedback" style="font-size:12px;color:var(--grey4);margin-top:8px;">Tap to rate</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCREEN: FIND GYMS -->
+      <div id="e-gyms" class="screen">
+        <div class="page-header">
+          <div class="page-title">Find Covered Gyms</div>
+          <div class="page-sub">All gyms within your plan network</div>
+        </div>
+        <div class="search-bar">
+          <span>🔍</span>
+          <input type="text" placeholder="Search by gym name or area..." oninput="filterGyms(this.value)">
+          <select style="border:none;outline:none;font-size:12px;color:var(--grey4);font-family:inherit;background:transparent;">
+            <option>All States</option>
+            <option>Lagos</option>
+            <option>Abuja</option>
+            <option>Port Harcourt</option>
+          </select>
+        </div>
+        <div class="gym-map">
+          📍 Map View — Lagos
+          <span class="map-pin" style="top:35%;left:40%" title="iFitness Lekki">📍</span>
+          <span class="map-pin" style="top:55%;left:62%" title="EkoFit V.I.">📍</span>
+          <span class="map-pin" style="top:25%;left:55%" title="FitnessOne Ikeja">📍</span>
+          <span class="map-pin" style="top:70%;left:30%" title="PureGym Ajah">📍</span>
+        </div>
+        <div class="gym-grid" id="gym-list">
+          <div class="gym-card">
+            <div class="gym-name">iFitness Lekki</div>
+            <div class="gym-location">📍 Admiralty Way, Lekki Phase 1</div>
+            <div class="gym-stars">★★★★★</div>
+            <div class="gym-meta">Open: 5am – 11pm · Weight training, Cardio, Pool</div>
+            <div style="margin-top:10px;display:flex;gap:6px;"><span class="badge badge-green">Open</span><span class="badge badge-blue">Covered</span></div>
+          </div>
+          <div class="gym-card">
+            <div class="gym-name">EkoFit Victoria Island</div>
+            <div class="gym-location">📍 Adeola Odeku Street, V.I.</div>
+            <div class="gym-stars">★★★★☆</div>
+            <div class="gym-meta">Open: 6am – 10pm · Cardio, Classes, Steam room</div>
+            <div style="margin-top:10px;display:flex;gap:6px;"><span class="badge badge-green">Open</span><span class="badge badge-blue">Covered</span></div>
+          </div>
+          <div class="gym-card">
+            <div class="gym-name">FitnessOne Ikeja</div>
+            <div class="gym-location">📍 Allen Avenue, Ikeja GRA</div>
+            <div class="gym-stars">★★★★☆</div>
+            <div class="gym-meta">Open: 5:30am – 10pm · Full gym, Yoga</div>
+            <div style="margin-top:10px;display:flex;gap:6px;"><span class="badge badge-green">Open</span><span class="badge badge-blue">Covered</span></div>
+          </div>
+          <div class="gym-card">
+            <div class="gym-name">PureGym Ajah</div>
+            <div class="gym-location">📍 Lekki-Epe Expressway, Ajah</div>
+            <div class="gym-stars">★★★☆☆</div>
+            <div class="gym-meta">Open: 6am – 9pm · Cardio, Spin classes</div>
+            <div style="margin-top:10px;display:flex;gap:6px;"><span class="badge badge-amber">Busy</span><span class="badge badge-blue">Covered</span></div>
+          </div>
+          <div class="gym-card">
+            <div class="gym-name">IronBody Lagos Island</div>
+            <div class="gym-location">📍 Broad Street, Lagos Island</div>
+            <div class="gym-stars">★★★★★</div>
+            <div class="gym-meta">Open: 5am – 11pm · Powerlifting specialist</div>
+            <div style="margin-top:10px;display:flex;gap:6px;"><span class="badge badge-green">Open</span><span class="badge badge-blue">Covered</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCREEN: OTP GENERATION -->
+      <div id="e-otp" class="screen">
+        <div class="page-header">
+          <div class="page-title">Get Session OTP</div>
+          <div class="page-sub">Generate a one-time password to present at your gym</div>
+        </div>
+
+        <div class="alert alert-warning">
+          <span class="alert-icon">⚠️</span>
+          <div>You have <strong>6 sessions remaining</strong> this month. Each OTP is valid for <strong>2 hours</strong> and can only be used once.</div>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <div class="card-header"><div class="card-title">Generate New OTP</div></div>
+            <div class="card-body">
+              <div style="font-size:12px;color:var(--grey4);margin-bottom:14px;">Select the gym you are visiting:</div>
+              <select style="width:100%;padding:10px 12px;border:1.5px solid var(--grey2);border-radius:8px;font-family:inherit;font-size:13px;color:var(--grey5);margin-bottom:14px;outline:none;background:white;">
+                <option>iFitness Lekki</option>
+                <option>EkoFit Victoria Island</option>
+                <option>FitnessOne Ikeja</option>
+                <option>PureGym Ajah</option>
+              </select>
+              <button class="btn btn-primary btn-lg" style="width:100%" onclick="generateOTP()">🔐 Generate OTP</button>
+            </div>
+          </div>
+
+          <div id="otp-result" style="display:none;">
+            <div class="otp-display">
+              <div class="otp-label">Your Session OTP</div>
+              <div class="otp-code" id="otp-value">483291</div>
+              <div class="otp-timer">Valid for <span id="otp-countdown">1:59</span> — Present to gym staff</div>
+            </div>
+            <div class="alert alert-success" style="margin-top:12px;">
+              <span class="alert-icon">✅</span>
+              <div>OTP generated for <strong>iFitness Lekki</strong>. Show this code to the front desk.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:4px;">
+          <div class="card-header"><div class="card-title">📱 WhatsApp Confirmation</div></div>
+          <div class="card-body">
+            <div style="font-size:13px;color:var(--grey5);margin-bottom:10px;">After your session, you will receive a WhatsApp message:</div>
+            <div style="background:var(--grey1);border-radius:10px;padding:14px 16px;border:1px solid var(--grey2);">
+              <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:6px;">💬 From: Leadway Wellness</div>
+              <div style="font-size:13px;color:var(--grey5);font-style:italic;">"Hi Favour, iFitness Lekki logged a gym session for you on <strong>Wednesday, 23 April 2026</strong> using OTP 483291. Did you visit this gym? Reply <strong>YES</strong> to confirm or <strong>NO</strong> to report a problem."</div>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:10px;">
+              <button class="btn btn-primary" onclick="showConfirmModal('yes')">✅ Simulate YES</button>
+              <button class="btn btn-ghost" onclick="showConfirmModal('no')">❌ Simulate NO (Fraud Alert)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCREEN: BUY MORE SESSIONS -->
+      <div id="e-topup" class="screen">
+        <div class="page-header">
+          <div class="page-title">Buy Additional Sessions</div>
+          <div class="page-sub">Top up your gym sessions — payment goes directly to your selected gym provider</div>
+        </div>
+
+        <!-- TAB SWITCHER: Extra Sessions vs iFitness Membership -->
+        <div style="display:flex;gap:0;margin-bottom:20px;border:1.5px solid var(--grey2);border-radius:10px;overflow:hidden;width:fit-content;">
+          <button id="tab-extra" onclick="topupTab('extra')" style="padding:9px 22px;font-size:13px;font-weight:600;font-family:inherit;border:none;cursor:pointer;background:var(--red);color:white;transition:all 0.2s;">➕ Extra Sessions</button>
+          <button id="tab-ifitness" onclick="topupTab('ifitness')" style="padding:9px 22px;font-size:13px;font-weight:600;font-family:inherit;border:none;cursor:pointer;background:var(--white);color:var(--grey4);transition:all 0.2s;">🏋️ iFitness Membership</button>
+        </div>
+
+        <!-- EXTRA SESSIONS PANEL -->
+        <div id="topup-extra" style="display:block;">
+          <div class="alert alert-info">
+            <span class="alert-icon">💡</span>
+            <div>Extra session payments go <strong>directly to the gym provider</strong> via the member top-up payment channel. These do not pass through Prognosis claims — providers receive a separate <strong>Member Top-Up Pay Advice</strong>.</div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">Select Gym &amp; Number of Sessions</div></div>
+            <div class="card-body">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
+                <div>
+                  <div style="font-size:11px;color:var(--grey4);margin-bottom:6px;">Select Gym</div>
+                  <select id="topup-gym" onchange="loadGymRate()" style="width:100%;padding:10px 12px;border:1.5px solid var(--grey2);border-radius:8px;font-family:inherit;font-size:13px;background:white;outline:none;">
+                    <option value="">-- Choose gym --</option>
+                    <option value="3500">iFitness Lekki</option>
+                    <option value="3000">EkoFit Victoria Island</option>
+                    <option value="2800">FitnessOne Ikeja</option>
+                    <option value="2500">PureGym Ajah</option>
+                    <option value="3200">IronBody Lagos Island</option>
+                  </select>
+                </div>
+                <div>
+                  <div style="font-size:11px;color:var(--grey4);margin-bottom:6px;">Provider Rate Per Session</div>
+                  <div id="gym-rate-display" style="padding:10px 12px;border:1.5px solid var(--grey2);border-radius:8px;font-size:14px;font-weight:700;color:var(--navy);background:var(--grey1);">Select a gym above</div>
+                </div>
+              </div>
+
+              <div id="session-qty-section" style="display:none;">
+                <div style="font-size:11px;color:var(--grey4);margin-bottom:6px;">Number of Sessions to Purchase</div>
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+                  <button onclick="adjustQty(-1)" style="width:36px;height:36px;border-radius:8px;border:1.5px solid var(--grey2);background:white;font-size:18px;cursor:pointer;font-family:inherit;">−</button>
+                  <div id="qty-display" style="font-size:22px;font-weight:700;color:var(--navy);min-width:40px;text-align:center;">1</div>
+                  <button onclick="adjustQty(1)" style="width:36px;height:36px;border-radius:8px;border:1.5px solid var(--grey2);background:white;font-size:18px;cursor:pointer;font-family:inherit;">+</button>
+                  <div style="font-size:12px;color:var(--grey4);">session(s)</div>
+                </div>
+
+                <div id="topup-summary-box" style="background:var(--grey1);border:1.5px solid var(--grey2);border-radius:10px;padding:16px;margin-bottom:16px;">
+                  <table style="width:100%;font-size:13px;">
+                    <tr><td style="padding:5px 0;color:var(--grey4);">Gym</td><td style="text-align:right;font-weight:600;" id="ts-gym">iFitness Lekki</td></tr>
+                    <tr><td style="padding:5px 0;color:var(--grey4);">Provider Rate</td><td style="text-align:right;" id="ts-rate">₦3,500/session</td></tr>
+                    <tr><td style="padding:5px 0;color:var(--grey4);">Sessions</td><td style="text-align:right;" id="ts-qty">× 1</td></tr>
+                    <tr><td colspan="2"><hr style="border:none;border-top:1px solid var(--grey3);margin:8px 0;"></td></tr>
+                    <tr><td style="font-weight:700;font-size:15px;">Total Payable</td><td style="text-align:right;font-weight:700;font-size:18px;color:var(--red);" id="ts-total">₦3,500</td></tr>
+                  </table>
+                  <div style="font-size:10px;color:var(--grey4);margin-top:8px;padding-top:8px;border-top:1px solid var(--grey3);">
+                    💳 Payment routes directly to provider · Appears in Member Top-Up Pay Advice only · Not a Prognosis claim
+                  </div>
+                </div>
+                <button class="btn btn-primary btn-lg" style="width:100%" onclick="showTopupSuccess()">💳 Pay Now</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="topup-success" style="display:none;">
+            <div class="alert alert-success">
+              <span class="alert-icon">✅</span>
+              <div><strong>Payment Successful!</strong> 3 extra sessions added at EkoFit V.I. (₦3,000/session = ₦9,000 total). Sessions immediately available in your balance. Provider notified via Member Top-Up Pay Advice.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- iFITNESS MEMBERSHIP PANEL -->
+        <div id="topup-ifitness" style="display:none;">
+          <div class="alert alert-amber" style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);color:#92400E;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:flex-start;gap:10px;font-size:13px;">
+            <span style="font-size:16px;flex-shrink:0;">🏋️</span>
+            <div><strong>iFitness is a separate gym membership programme.</strong> Purchasing an iFitness package gives you access to the full iFitness network (all branches) as a standalone membership — separate from your regular Leadway gym benefit. These are billed as a corporate membership with a <strong>20% Leadway member discount</strong>.</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+            <div class="card" style="border:2px solid transparent;cursor:pointer;" id="if1" onclick="selectIF(1)">
+              <div class="card-body" style="text-align:center;">
+                <div style="font-size:24px;margin-bottom:8px;">💪</div>
+                <div style="font-size:14px;font-weight:700;color:var(--navy);">Monthly</div>
+                <div style="font-size:11px;color:var(--grey4);margin:4px 0 12px;">Unlimited sessions · 1 branch</div>
+                <div style="font-size:11px;text-decoration:line-through;color:var(--grey4);">₦12,000</div>
+                <div style="font-size:22px;font-weight:700;color:var(--red);">₦9,600</div>
+                <div style="font-size:10px;color:var(--green);font-weight:600;">20% Leadway discount</div>
+              </div>
+            </div>
+            <div class="card" style="border:2px solid var(--red);cursor:pointer;position:relative;" id="if2" onclick="selectIF(2)">
+              <div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--red);color:white;font-size:10px;font-weight:700;padding:2px 10px;border-radius:10px;white-space:nowrap;">Most Popular</div>
+              <div class="card-body" style="text-align:center;">
+                <div style="font-size:24px;margin-bottom:8px;">🏆</div>
+                <div style="font-size:14px;font-weight:700;color:var(--navy);">Quarterly</div>
+                <div style="font-size:11px;color:var(--grey4);margin:4px 0 12px;">Unlimited sessions · All branches</div>
+                <div style="font-size:11px;text-decoration:line-through;color:var(--grey4);">₦42,000</div>
+                <div style="font-size:22px;font-weight:700;color:var(--red);">₦33,600</div>
+                <div style="font-size:10px;color:var(--green);font-weight:600;">20% Leadway discount</div>
+              </div>
+            </div>
+            <div class="card" style="border:2px solid transparent;cursor:pointer;" id="if3" onclick="selectIF(3)">
+              <div class="card-body" style="text-align:center;">
+                <div style="font-size:24px;margin-bottom:8px;">🌟</div>
+                <div style="font-size:14px;font-weight:700;color:var(--navy);">Annual</div>
+                <div style="font-size:11px;color:var(--grey4);margin:4px 0 12px;">Unlimited sessions · All branches</div>
+                <div style="font-size:11px;text-decoration:line-through;color:var(--grey4);">₦150,000</div>
+                <div style="font-size:22px;font-weight:700;color:var(--red);">₦120,000</div>
+                <div style="font-size:10px;color:var(--green);font-weight:600;">20% Leadway discount</div>
+              </div>
+            </div>
+          </div>
+          <div class="card" id="if-checkout" style="display:none;margin-top:14px;">
+            <div class="card-header"><div class="card-title">iFitness Order Summary</div></div>
+            <div class="card-body">
+              <table style="width:100%;font-size:13px;">
+                <tr><td style="padding:5px 0;color:var(--grey4);">Membership</td><td style="text-align:right;font-weight:600;" id="if-pkg">iFitness Quarterly</td></tr>
+                <tr><td style="padding:5px 0;color:var(--grey4);">Regular Price</td><td style="text-align:right;text-decoration:line-through;color:var(--grey4);" id="if-full">₦42,000</td></tr>
+                <tr><td style="padding:5px 0;color:var(--green);">20% Leadway Discount</td><td style="text-align:right;color:var(--green);" id="if-disc">−₦8,400</td></tr>
+                <tr><td colspan="2"><hr style="border:none;border-top:1px solid var(--grey2);margin:8px 0;"></td></tr>
+                <tr><td style="font-weight:700;font-size:15px;">Total</td><td style="text-align:right;font-weight:700;font-size:15px;color:var(--red);" id="if-total">₦33,600</td></tr>
+              </table>
+              <div style="font-size:10px;color:var(--grey4);margin-top:8px;padding-top:8px;border-top:1px solid var(--grey2);">Billed as corporate iFitness membership · Separate from Prognosis gym claims</div>
+              <button class="btn btn-primary btn-lg" style="width:100%;margin-top:14px;">💳 Proceed to Payment</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCREEN: SESSION HISTORY -->
+      <div id="e-history" class="screen">
+        <div class="page-header">
+          <div class="page-title">Session History</div>
+          <div class="page-sub">Your full OTP and visit log</div>
+        </div>
+        <div class="card">
+          <table class="data-table">
+            <thead>
+              <tr><th>Date</th><th>Gym</th><th>OTP</th><th>Status</th><th>Confirmed By</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Apr 23, 2026</td><td>iFitness Lekki</td><td><code style="font-family:monospace;font-size:12px;">483291</code></td><td><span class="badge badge-green">Confirmed</span></td><td>WhatsApp ✓</td></tr>
+              <tr><td>Apr 20, 2026</td><td>EkoFit V.I.</td><td><code style="font-family:monospace;font-size:12px;">774102</code></td><td><span class="badge badge-green">Confirmed</span></td><td>WhatsApp ✓</td></tr>
+              <tr><td>Apr 17, 2026</td><td>FitnessOne Ikeja</td><td><code style="font-family:monospace;font-size:12px;">332847</code></td><td><span class="badge badge-green">Confirmed</span></td><td>WhatsApp ✓</td></tr>
+              <tr><td>Apr 14, 2026</td><td>iFitness Lekki</td><td><code style="font-family:monospace;font-size:12px;">918273</code></td><td><span class="badge badge-green">Confirmed</span></td><td>WhatsApp ✓</td></tr>
+              <tr><td>Apr 10, 2026</td><td>PureGym Ajah</td><td><code style="font-family:monospace;font-size:12px;">556614</code></td><td><span class="badge badge-green">Confirmed</span></td><td>Provider ✓</td></tr>
+              <tr><td>Apr 7, 2026</td><td>EkoFit V.I.</td><td><code style="font-family:monospace;font-size:12px;">204388</code></td><td><span class="badge badge-green">Confirmed</span></td><td>WhatsApp ✓</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SCREEN: NOTIFICATIONS -->
+      <div id="e-notifications" class="screen">
+        <div class="page-header">
+          <div class="page-title">Notifications</div>
+        </div>
+        <div class="notif-pill"><span class="notif-icon">✅</span><div><strong>Session Confirmed</strong><br><span style="color:var(--grey4)">Your visit to iFitness Lekki today was confirmed. Claim created automatically. · Just now</span></div></div>
+        <div class="notif-pill"><span class="notif-icon">💬</span><div><strong>WhatsApp Confirmation Needed</strong><br><span style="color:var(--grey4)">EkoFit logged a session for your spouse Amaka — pending her confirmation. · 2 hours ago</span></div></div>
+        <div class="notif-pill"><span class="notif-icon">🎁</span><div><strong>Top-Up Reminder</strong><br><span style="color:var(--grey4)">You have 6 sessions left this month. Consider topping up with our 20% discount! · Apr 22</span></div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     PORTAL 2: PROVIDER
+════════════════════════════════════════════════════ -->
+<div id="portal-provider" class="portal-view">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <div style="padding: 14px 20px; border-bottom: 1px solid var(--grey2); margin-bottom: 8px;">
+          <div style="font-size: 13px; font-weight: 700; color: var(--navy);">iFitness Lekki</div>
+          <div style="font-size: 11px; color: var(--grey4);">Provider ID: GYM-0029</div>
+          <div style="margin-top: 8px;"><span class="badge badge-green">Active</span></div>
+        </div>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Provider Menu</div>
+        <div class="nav-item active" onclick="providerScreen('dashboard')"><span class="ni-icon">🏠</span> Dashboard</div>
+        <div class="nav-item" onclick="providerScreen('eligibility')"><span class="ni-icon">🔍</span> Check Eligibility</div>
+        <div class="nav-item" onclick="providerScreen('validate')"><span class="ni-icon">✅</span> Validate OTP</div>
+        <div class="nav-item" onclick="providerScreen('claims')"><span class="ni-icon">📄</span> Claims <span class="nav-badge amber">4 pending</span></div>
+        <div class="nav-item" onclick="providerScreen('payadvice')"><span class="ni-icon">📥</span> Pay Advice</div>
+      </div>
+    </div>
+    <div class="main-content">
+
+      <!-- PROVIDER: DASHBOARD -->
+      <div id="p-dashboard" class="screen active">
+        <div class="page-header">
+          <div class="page-title">Provider Dashboard</div>
+          <div class="page-sub">iFitness Lekki — April 2026</div>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi-card green">
+            <div class="kpi-label">Sessions Today</div>
+            <div class="kpi-value">8</div>
+            <div class="kpi-sub">Leadway members</div>
+          </div>
+          <div class="kpi-card orange">
+            <div class="kpi-label">This Month</div>
+            <div class="kpi-value">147</div>
+            <div class="kpi-sub">sessions validated</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Pending Claims</div>
+            <div class="kpi-value">4</div>
+            <div class="kpi-sub">ready to submit</div>
+          </div>
+          <div class="kpi-card blue">
+            <div class="kpi-label">Amount Payable</div>
+            <div class="kpi-value">₦220k</div>
+            <div class="kpi-sub">pending payment</div>
+          </div>
+        </div>
+        <div class="alert alert-danger">
+          <span class="alert-icon">🚨</span>
+          <div><strong>FWA Alert:</strong> Session for member LWH-004901 flagged — member denied visit via WhatsApp. Case Ref: FWA-2026-041. Investigation underway.</div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Today's Validated Sessions</div>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>Time</th><th>Member</th><th>OTP</th><th>Status</th><th>WhatsApp</th></tr></thead>
+            <tbody>
+              <tr><td>08:14am</td><td>Favour Komoni (21000645/0)</td><td><code>483291</code></td><td><span class="badge badge-green">Confirmed</span></td><td>✅ YES</td></tr>
+              <tr><td>09:02am</td><td>Amaka Adeyemi (LWH-004822)</td><td><code>631074</code></td><td><span class="badge badge-amber">Pending</span></td><td>⏳ Awaiting</td></tr>
+              <tr><td>10:45am</td><td>Chidi Okeke (LWH-003391)</td><td><code>229481</code></td><td><span class="badge badge-green">Confirmed</span></td><td>✅ YES</td></tr>
+              <tr><td>12:18pm</td><td>Funke Bello (LWH-009001)</td><td><code>874922</code></td><td><span class="badge badge-red">Flagged</span></td><td>❌ NO — FWA Alert</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PROVIDER: CHECK ELIGIBILITY -->
+      <div id="p-eligibility" class="screen">
+        <div class="page-header">
+          <div class="page-title">Check Member Eligibility</div>
+          <div class="page-sub">Verify coverage before accepting a session</div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Member Lookup</div></div>
+          <div class="card-body">
+            <div class="search-bar" style="margin-bottom:10px;">
+              <span>🔍</span>
+              <input type="text" placeholder="Enter Member ID (e.g. 21000645/0) or name..." id="elig-search">
+            </div>
+            <button class="btn btn-primary" onclick="checkEligibility()">Check Eligibility</button>
+          </div>
+        </div>
+        <div id="elig-result" style="display:none;">
+          <div class="card">
+            <div class="card-body">
+              <div class="alert alert-success" style="margin-bottom:16px;">
+                <span class="alert-icon">✅</span>
+                <div><strong>Member is eligible</strong> — Active coverage confirmed</div>
+              </div>
+              <div class="two-col">
+                <div>
+                  <div style="font-size:11px;color:var(--grey4);margin-bottom:3px;">Member Name</div>
+                  <div style="font-size:14px;font-weight:700;color:var(--navy);">Favour Komoni</div>
+                  <div style="font-size:11px;color:var(--grey4);margin-top:8px;">Member ID</div>
+                  <div style="font-size:13px;font-weight:600;">21000645/0</div>
+                  <div style="font-size:11px;color:var(--grey4);margin-top:8px;">Plan</div>
+                  <div style="font-size:13px;"><span class="badge badge-blue">Leadway Max Plan</span></div>
+                </div>
+                <div>
+                  <div style="font-size:11px;color:var(--grey4);margin-bottom:3px;">Sessions Remaining</div>
+                  <div style="font-size:28px;font-weight:700;color:var(--green);">6</div>
+                  <div style="font-size:11px;color:var(--grey4);">of 12 this month</div>
+                  <div class="progress-bar" style="margin-top:8px;"><div class="progress-fill green" style="width:50%"></div></div>
+                  <div style="margin-top:10px;"><span class="badge badge-green">Covered at this gym</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PROVIDER: VALIDATE OTP -->
+      <div id="p-validate" class="screen">
+        <div class="page-header">
+          <div class="page-title">Validate Member OTP</div>
+          <div class="page-sub">Enter the OTP presented by the member</div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">OTP Entry</div></div>
+          <div class="card-body">
+            <div style="font-size:13px;color:var(--grey4);margin-bottom:10px;">Member presents a 6-digit OTP. Enter it below:</div>
+            <div class="otp-input-field">
+              <input type="text" maxlength="1" oninput="nextOTPField(this,1)">
+              <input type="text" maxlength="1" oninput="nextOTPField(this,2)">
+              <input type="text" maxlength="1" oninput="nextOTPField(this,3)">
+              <input type="text" maxlength="1" oninput="nextOTPField(this,4)">
+              <input type="text" maxlength="1" oninput="nextOTPField(this,5)">
+              <input type="text" maxlength="1" oninput="nextOTPField(this,6)">
+            </div>
+            <button class="btn btn-primary btn-lg" onclick="validateOTPProvider()">✅ Validate OTP</button>
+            <button class="btn btn-secondary btn-lg" style="margin-left:8px;" onclick="showGenerateForMember()">📱 Generate on Behalf of Member</button>
+          </div>
+        </div>
+        <div id="otp-valid-result" style="display:none;">
+          <div class="card">
+            <div class="card-body">
+              <div class="alert alert-success">
+                <span class="alert-icon">✅</span>
+                <div><strong>OTP Valid!</strong> — Claim automatically created. Member: Favour Komoni (21000645/0). WhatsApp confirmation sent.</div>
+              </div>
+              <div class="stepper">
+                <div class="step done"><div class="step-circle">✓</div><div class="step-label">OTP Valid</div></div>
+                <div class="step done"><div class="step-circle">✓</div><div class="step-label">Claim Created</div></div>
+                <div class="step current"><div class="step-circle">3</div><div class="step-label">WA Confirm</div></div>
+                <div class="step"><div class="step-circle">4</div><div class="step-label">Submitted</div></div>
+                <div class="step"><div class="step-circle">5</div><div class="step-label">Paid</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PROVIDER: CLAIMS -->
+      <div id="p-claims" class="screen">
+        <div class="page-header">
+          <div class="page-title">Claims Management</div>
+          <div class="page-sub">View, manage, and submit gym session claims</div>
+        </div>
+        <div style="display:flex;gap:10px;margin-bottom:16px;">
+          <button class="btn btn-primary">Submit Batch Claims</button>
+          <button class="btn btn-secondary">Download Report</button>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Pending Claims</div>
+              <div class="card-sub">4 sessions ready for submission</div>
+            </div>
+          </div>
+          <table class="data-table">
+            <thead><tr><th><input type="checkbox"></th><th>Date</th><th>Member</th><th>Session</th><th>Rate</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td><input type="checkbox" checked></td><td>Apr 23</td><td>Favour Komoni</td><td>Gym Session</td><td>₦3,500</td><td><span class="badge badge-amber">Pending</span></td></tr>
+              <tr><td><input type="checkbox" checked></td><td>Apr 22</td><td>Chidi Okeke</td><td>Gym Session</td><td>₦3,500</td><td><span class="badge badge-amber">Pending</span></td></tr>
+              <tr><td><input type="checkbox" checked></td><td>Apr 21</td><td>Ngozi Eze</td><td>Gym Session</td><td>₦3,500</td><td><span class="badge badge-amber">Pending</span></td></tr>
+              <tr><td><input type="checkbox"></td><td>Apr 20</td><td>Funke Bello</td><td>Gym Session</td><td>₦3,500</td><td><span class="badge badge-red">Flagged — FWA</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PROVIDER: PAY ADVICE -->
+      <div id="p-payadvice" class="screen">
+        <div class="page-header">
+          <div class="page-title">Pay Advice</div>
+          <div class="page-sub">Two separate payment channels: Leadway Claims (via Prognosis) and Member Top-Up payments</div>
+        </div>
+
+        <!-- TAB switcher -->
+        <div style="display:flex;gap:0;margin-bottom:20px;border:1.5px solid var(--grey2);border-radius:10px;overflow:hidden;width:fit-content;">
+          <button id="pa-tab-claims" onclick="payAdviceTab('claims')" style="padding:9px 22px;font-size:13px;font-weight:600;font-family:inherit;border:none;cursor:pointer;background:var(--red);color:white;transition:all 0.2s;">🏦 Leadway Claims</button>
+          <button id="pa-tab-topup" onclick="payAdviceTab('topup')" style="padding:9px 22px;font-size:13px;font-weight:600;font-family:inherit;border:none;cursor:pointer;background:var(--white);color:var(--grey4);transition:all 0.2s;">💳 Member Top-Up</button>
+        </div>
+
+        <!-- BUCKET 1: LEADWAY CLAIMS (via Prognosis) -->
+        <div id="pa-claims">
+          <div class="alert alert-info" style="margin-bottom:16px;">
+            <span class="alert-icon">🏦</span>
+            <div>These are sessions covered under member benefit — submitted via Prognosis and paid by Leadway Health. Each session validated via OTP and confirmed by member WhatsApp response.</div>
+          </div>
+          <div class="kpi-row">
+            <div class="kpi-card green"><div class="kpi-label">Last Prognosis Payment</div><div class="kpi-value">₦182k</div><div class="kpi-sub">Apr 15, 2026</div></div>
+            <div class="kpi-card orange"><div class="kpi-label">Pending Claims</div><div class="kpi-value">₦220k</div><div class="kpi-sub">4 sessions submitted</div></div>
+            <div class="kpi-card blue"><div class="kpi-label">YTD Leadway Paid</div><div class="kpi-value">₦1.4M</div><div class="kpi-sub">Jan–Apr 2026</div></div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Leadway Claims Pay Advice</div>
+                <div class="card-sub">Sessions billed through Prognosis claims system</div>
+              </div>
+            </div>
+            <table class="data-table">
+              <thead><tr><th>Period</th><th>Sessions</th><th>Rate</th><th>Amount</th><th>Status</th><th>Source</th><th>PDF</th></tr></thead>
+              <tbody>
+                <tr><td>Apr 1–15, 2026</td><td>52</td><td>₦3,500</td><td>₦182,000</td><td><span class="badge badge-green">Paid</span></td><td><span class="badge badge-blue">Prognosis</span></td><td><button class="btn btn-secondary btn-sm">📥</button></td></tr>
+                <tr><td>Mar 16–31, 2026</td><td>47</td><td>₦3,500</td><td>₦164,500</td><td><span class="badge badge-green">Paid</span></td><td><span class="badge badge-blue">Prognosis</span></td><td><button class="btn btn-secondary btn-sm">📥</button></td></tr>
+                <tr><td>Mar 1–15, 2026</td><td>41</td><td>₦3,500</td><td>₦143,500</td><td><span class="badge badge-green">Paid</span></td><td><span class="badge badge-blue">Prognosis</span></td><td><button class="btn btn-secondary btn-sm">📥</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- BUCKET 2: MEMBER TOP-UP PAYMENTS (direct, not via Prognosis) -->
+        <div id="pa-topup" style="display:none;">
+          <div class="alert alert-success" style="margin-bottom:16px;">
+            <span class="alert-icon">💳</span>
+            <div>These are sessions <strong>paid directly by members</strong> for extra sessions beyond their plan benefit. Payments are collected by the portal and remitted to the provider. <strong>These do not go through Prognosis</strong> — they appear here only.</div>
+          </div>
+          <div class="kpi-row">
+            <div class="kpi-card green"><div class="kpi-label">Last Top-Up Remittance</div><div class="kpi-value">₦36k</div><div class="kpi-sub">Apr 20, 2026</div></div>
+            <div class="kpi-card orange"><div class="kpi-label">Pending Remittance</div><div class="kpi-value">₦18k</div><div class="kpi-sub">6 sessions purchased</div></div>
+            <div class="kpi-card blue"><div class="kpi-label">YTD Member Top-Up</div><div class="kpi-value">₦187k</div><div class="kpi-sub">Jan–Apr 2026</div></div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Member Top-Up Pay Advice</div>
+                <div class="card-sub">Direct member payments remitted to provider — separate from Prognosis claims</div>
+              </div>
+            </div>
+            <table class="data-table">
+              <thead><tr><th>Date</th><th>Member</th><th>Sessions</th><th>Rate</th><th>Amount</th><th>Status</th><th>PDF</th></tr></thead>
+              <tbody>
+                <tr><td>Apr 20, 2026</td><td>Favour Komoni</td><td>3</td><td>₦3,500</td><td>₦10,500</td><td><span class="badge badge-green">Remitted</span></td><td><button class="btn btn-secondary btn-sm">📥</button></td></tr>
+                <tr><td>Apr 18, 2026</td><td>Chidi Okeke</td><td>5</td><td>₦3,500</td><td>₦17,500</td><td><span class="badge badge-green">Remitted</span></td><td><button class="btn btn-secondary btn-sm">📥</button></td></tr>
+                <tr><td>Apr 15, 2026</td><td>Ngozi Eze</td><td>2</td><td>₦3,500</td><td>₦7,000</td><td><span class="badge badge-green">Remitted</span></td><td><button class="btn btn-secondary btn-sm">📥</button></td></tr>
+                <tr><td>Apr 23, 2026</td><td>Amaka Balogun</td><td>4</td><td>₦3,500</td><td>₦14,000</td><td><span class="badge badge-amber">Pending</span></td><td><button class="btn btn-secondary btn-sm">📥</button></td></tr>
+                <tr><td>Apr 23, 2026</td><td>Seun Martins</td><td>2</td><td>₦3,500</td><td>₦7,000</td><td><span class="badge badge-amber">Pending</span></td><td><button class="btn btn-secondary btn-sm">📥</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="font-size:12px;color:var(--grey4);margin-top:8px;">⚠️ Top-up remittances are processed weekly. Pending amounts will be remitted by Friday, 25 April 2026.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     PORTAL 3: ADVOCATE
+════════════════════════════════════════════════════ -->
+<div id="portal-advocate" class="portal-view">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <div style="padding: 14px 20px; border-bottom: 1px solid var(--grey2); margin-bottom: 8px;">
+          <div style="font-size: 13px; font-weight: 700; color: var(--navy);">Tolu Fashola</div>
+          <div style="font-size: 11px; color: var(--grey4);">Wellness Operations</div>
+          <div style="margin-top: 8px;"><span class="badge badge-purple">Internal Staff</span></div>
+        </div>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Advocate Tools</div>
+        <div class="nav-item active" onclick="advocateScreen('dashboard')"><span class="ni-icon">🏠</span> Dashboard</div>
+        <div class="nav-item" onclick="advocateScreen('search')"><span class="ni-icon">🔍</span> Member Search</div>
+        <div class="nav-item" onclick="advocateScreen('otp')"><span class="ni-icon">🔐</span> Generate OTP</div>
+        <div class="nav-item" onclick="advocateScreen('network')"><span class="ni-icon">🏋️</span> Gym Network</div>
+        <div class="nav-item" onclick="advocateScreen('fwa')"><span class="ni-icon">🚨</span> FWA Dashboard <span class="nav-badge">6</span></div>
+        <div class="nav-item" onclick="advocateScreen('reports')"><span class="ni-icon">📊</span> Utilization Reports</div>
+      </div>
+    </div>
+    <div class="main-content">
+
+      <!-- ADVOCATE: DASHBOARD -->
+      <div id="a-dashboard" class="screen active">
+        <div class="page-header">
+          <div class="page-title">Advocate Operations Dashboard</div>
+          <div class="page-sub">Leadway Wellness — April 2026</div>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi-card green"><div class="kpi-label">Total Sessions Today</div><div class="kpi-value">234</div><div class="kpi-sub">network-wide</div></div>
+          <div class="kpi-card"><div class="kpi-label">Active Members</div><div class="kpi-value">4,812</div><div class="kpi-sub">with gym benefit</div></div>
+          <div class="kpi-card orange"><div class="kpi-label">Open FWA Cases</div><div class="kpi-value">6</div><div class="kpi-sub">under investigation</div></div>
+          <div class="kpi-card blue"><div class="kpi-label">Provider Network</div><div class="kpi-value">47</div><div class="kpi-sub">active gyms</div></div>
+        </div>
+        <div class="two-col">
+          <div class="card">
+            <div class="card-header"><div class="card-title">Top 5 Gyms by Volume</div></div>
+            <div class="card-body" style="padding:0;">
+              <table class="data-table">
+                <tbody>
+                  <tr><td>iFitness Lekki</td><td><div class="progress-bar"><div class="progress-fill green" style="width:90%"></div></div></td><td style="text-align:right;font-weight:700;font-size:12px;">1,247</td></tr>
+                  <tr><td>EkoFit V.I.</td><td><div class="progress-bar"><div class="progress-fill orange" style="width:70%"></div></div></td><td style="text-align:right;font-weight:700;font-size:12px;">891</td></tr>
+                  <tr><td>FitnessOne Ikeja</td><td><div class="progress-bar"><div class="progress-fill" style="width:55%"></div></div></td><td style="text-align:right;font-weight:700;font-size:12px;">712</td></tr>
+                  <tr><td>IronBody Lagos Is.</td><td><div class="progress-bar"><div class="progress-fill blue" style="width:40%"></div></div></td><td style="text-align:right;font-weight:700;font-size:12px;">521</td></tr>
+                  <tr><td>PureGym Ajah</td><td><div class="progress-bar"><div class="progress-fill" style="width:28%"></div></div></td><td style="text-align:right;font-weight:700;font-size:12px;">362</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title">Recent FWA Flags</div></div>
+            <div class="card-body" style="padding:0;">
+              <div class="fwa-case" style="margin:10px;margin-bottom:6px;">
+                <div class="fwa-icon">🚨</div>
+                <div><div style="font-size:12px;font-weight:700;">FWA-2026-041 · Funke Bello</div><div style="font-size:11px;color:var(--grey4);">iFitness Lekki · Member denied visit · Open</div></div>
+                <span class="badge badge-red" style="margin-left:auto;">Open</span>
+              </div>
+              <div class="fwa-case" style="margin:10px;margin-bottom:6px;">
+                <div class="fwa-icon">🚨</div>
+                <div><div style="font-size:12px;font-weight:700;">FWA-2026-039 · Emeka Nwosu</div><div style="font-size:11px;color:var(--grey4);">PureGym Ajah · Provider-generated OTP · Open</div></div>
+                <span class="badge badge-amber" style="margin-left:auto;">Review</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADVOCATE: MEMBER SEARCH -->
+      <div id="a-search" class="screen">
+        <div class="page-header">
+          <div class="page-title">Member 360° View</div>
+          <div class="page-sub">Search any enrollee for complete benefit and history detail</div>
+        </div>
+        <div class="search-bar">
+          <span>🔍</span>
+          <input type="text" placeholder="Search by Member ID, name or scheme..." id="adv-search">
+          <button class="btn btn-primary btn-sm" onclick="advSearch()">Search</button>
+        </div>
+        <div id="adv-member-view" style="display:none;">
+          <div class="alert alert-success"><span class="alert-icon">✅</span><div>Member found — showing full 360° profile</div></div>
+          <div class="three-col">
+            <div class="card">
+              <div class="card-header"><div class="card-title">Member Details</div></div>
+              <div class="card-body">
+                <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px;">Favour Komoni</div>
+                <div style="font-size:11px;color:var(--grey4);">21000645/0 · Leadway Max Plan</div>
+                <div style="margin-top:12px;font-size:12px;color:var(--grey4);">Scheme</div>
+                <div style="font-size:13px;font-weight:600;">First Register Ltd</div>
+                <div style="margin-top:8px;font-size:12px;color:var(--grey4);">Phone</div>
+                <div style="font-size:13px;">+234 803 *** ****</div>
+                <div style="margin-top:8px;font-size:12px;color:var(--grey4);">Gym Coverage</div>
+                <div><span class="badge badge-green">Active</span></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header"><div class="card-title">Benefit Status</div></div>
+              <div class="card-body">
+                <div class="kpi-label">Sessions Remaining</div>
+                <div class="kpi-value" style="font-size:34px;color:var(--green);">6</div>
+                <div style="font-size:11px;color:var(--grey4);">of 12 this month</div>
+                <div class="progress-bar" style="margin:8px 0;"><div class="progress-fill green" style="width:50%"></div></div>
+                <div style="font-size:12px;color:var(--grey4);margin-top:8px;">Top-ups purchased</div>
+                <div style="font-size:13px;font-weight:600;">None this month</div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header"><div class="card-title">Fraud & Flags</div></div>
+              <div class="card-body">
+                <div style="font-size:12px;color:var(--grey4);">Open FWA Cases</div>
+                <div style="font-size:28px;font-weight:700;color:var(--green);">0</div>
+                <div style="font-size:12px;color:var(--grey4);margin-top:8px;">Lifetime flags</div>
+                <div style="font-size:13px;font-weight:600;">0</div>
+                <div style="margin-top:12px;"><span class="badge badge-green">Clean record</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Recent OTP & Session Log</div>
+              <button class="btn btn-secondary btn-sm" onclick="advocateScreen('otp')">Generate OTP for Member</button>
+            </div>
+            <table class="data-table">
+              <thead><tr><th>Date</th><th>Gym</th><th>OTP</th><th>Generated By</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>Apr 23</td><td>iFitness Lekki</td><td><code>483291</code></td><td>Member</td><td><span class="badge badge-green">Confirmed</span></td></tr>
+                <tr><td>Apr 20</td><td>EkoFit V.I.</td><td><code>774102</code></td><td>Member</td><td><span class="badge badge-green">Confirmed</span></td></tr>
+                <tr><td>Apr 17</td><td>FitnessOne Ikeja</td><td><code>332847</code></td><td>Member</td><td><span class="badge badge-green">Confirmed</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADVOCATE: GENERATE OTP -->
+      <div id="a-otp" class="screen">
+        <div class="page-header">
+          <div class="page-title">Generate OTP on Behalf of Member</div>
+          <div class="page-sub">All advocate-generated OTPs are fully logged with your name, timestamp and IP</div>
+        </div>
+        <div class="alert alert-warning">
+          <span class="alert-icon">📋</span>
+          <div>Advocate-generated OTPs are flagged in the audit trail. Both the member and provider will receive the OTP via email simultaneously.</div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Generate OTP</div></div>
+          <div class="card-body">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+              <div>
+                <div style="font-size:11px;color:var(--grey4);margin-bottom:6px;">Member ID or Name</div>
+                <input style="width:100%;padding:10px 12px;border:1.5px solid var(--grey2);border-radius:8px;font-family:inherit;font-size:13px;outline:none;" placeholder="e.g. 21000645/0">
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--grey4);margin-bottom:6px;">Gym</div>
+                <select style="width:100%;padding:10px 12px;border:1.5px solid var(--grey2);border-radius:8px;font-family:inherit;font-size:13px;background:white;outline:none;">
+                  <option>iFitness Lekki</option><option>EkoFit V.I.</option><option>FitnessOne Ikeja</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-bottom:14px;">
+              <div style="font-size:11px;color:var(--grey4);margin-bottom:6px;">Reason for Advocate Generation</div>
+              <select style="width:100%;padding:10px 12px;border:1.5px solid var(--grey2);border-radius:8px;font-family:inherit;font-size:13px;background:white;outline:none;">
+                <option>Member has no smartphone access</option>
+                <option>Member's app temporarily unavailable</option>
+                <option>Member called in request</option>
+              </select>
+            </div>
+            <button class="btn btn-primary btn-lg" onclick="advGenOTP()">🔐 Generate & Send OTP</button>
+          </div>
+        </div>
+        <div id="adv-otp-result" style="display:none;">
+          <div class="otp-display">
+            <div class="otp-label">Advocate-Generated OTP</div>
+            <div class="otp-code">724019</div>
+            <div style="font-size:11px;opacity:0.7;margin-top:10px;">Sent to member + iFitness Lekki via email · Logged: Tolu Fashola · 12:47pm</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADVOCATE: GYM NETWORK -->
+      <div id="a-network" class="screen">
+        <div class="page-header">
+          <div class="page-title">Gym Provider Network</div>
+          <div class="page-sub">Manage the full network of gym providers</div>
+        </div>
+        <div class="card">
+          <table class="data-table">
+            <thead><tr><th>Gym Name</th><th>Location</th><th>Sessions (Apr)</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>
+              <tr><td><strong>iFitness Lekki</strong></td><td>Lekki Phase 1</td><td>1,247</td><td><span class="badge badge-green">Active</span></td><td><button class="btn btn-secondary btn-sm">Manage</button></td></tr>
+              <tr><td><strong>EkoFit V.I.</strong></td><td>Victoria Island</td><td>891</td><td><span class="badge badge-green">Active</span></td><td><button class="btn btn-secondary btn-sm">Manage</button></td></tr>
+              <tr><td><strong>FitnessOne Ikeja</strong></td><td>Ikeja GRA</td><td>712</td><td><span class="badge badge-green">Active</span></td><td><button class="btn btn-secondary btn-sm">Manage</button></td></tr>
+              <tr><td><strong>PureGym Ajah</strong></td><td>Lekki-Epe Exp.</td><td>362</td><td><span class="badge badge-amber">Review</span></td><td><button class="btn btn-ghost btn-sm">Investigate</button></td></tr>
+              <tr><td><strong>Peak Performance Abuja</strong></td><td>Maitama, Abuja</td><td>204</td><td><span class="badge badge-green">Active</span></td><td><button class="btn btn-secondary btn-sm">Manage</button></td></tr>
+              <tr><td><strong>IronBody Lagos Island</strong></td><td>Broad Street</td><td>0</td><td><span class="badge badge-grey">Suspended</span></td><td><button class="btn btn-ghost btn-sm">Reactivate</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ADVOCATE: FWA DASHBOARD -->
+      <div id="a-fwa" class="screen">
+        <div class="page-header">
+          <div class="page-title">FWA Dashboard</div>
+          <div class="page-sub">Fraud, Waste & Abuse case management</div>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi-card"><div class="kpi-label">Open Cases</div><div class="kpi-value">6</div></div>
+          <div class="kpi-card green"><div class="kpi-label">Resolved (Apr)</div><div class="kpi-value">14</div></div>
+          <div class="kpi-card orange"><div class="kpi-label">Claims Reversed</div><div class="kpi-value">₦49k</div></div>
+          <div class="kpi-card blue"><div class="kpi-label">Recovery Rate</div><div class="kpi-value">91%</div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Open Cases</div></div>
+          <div style="padding:14px;">
+            <div class="fwa-case">
+              <div class="fwa-icon">🚨</div>
+              <div style="flex:1;">
+                <div style="font-size:13px;font-weight:700;">FWA-2026-041 · Funke Bello (LWH-009001)</div>
+                <div style="font-size:11px;color:var(--grey4);margin-top:2px;">iFitness Lekki · Apr 23 · Member denied visit via WhatsApp</div>
+                <div style="font-size:11px;color:var(--grey4);">Provider notified: Yes · Case Ref issued</div>
+              </div>
+              <div style="text-align:right;display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+                <span class="badge badge-red">Open</span>
+                <button class="btn btn-primary btn-sm" onclick="closeFWA()">Close Case</button>
+              </div>
+            </div>
+            <div class="fwa-case">
+              <div class="fwa-icon">⚠️</div>
+              <div style="flex:1;">
+                <div style="font-size:13px;font-weight:700;">FWA-2026-039 · Emeka Nwosu (LWH-007712)</div>
+                <div style="font-size:11px;color:var(--grey4);margin-top:2px;">PureGym Ajah · Apr 21 · Provider-generated OTP, member uncontactable</div>
+              </div>
+              <div style="text-align:right;display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+                <span class="badge badge-amber">Under Review</span>
+                <button class="btn btn-secondary btn-sm">Escalate</button>
+              </div>
+            </div>
+            <div id="fwa-closed-msg" style="display:none;" class="alert alert-success" style="margin-top:10px;">
+              <span class="alert-icon">✅</span><div>Case FWA-2026-041 closed. Claim for ₦3,500 reversed automatically via API. Provider notified.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADVOCATE: UTILIZATION REPORTS -->
+      <div id="a-reports" class="screen">
+        <div class="page-header">
+          <div class="page-title">Utilization Reports</div>
+          <div class="page-sub">Gym usage analytics for actuarial review and network management</div>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi-card green"><div class="kpi-label">Sessions (Apr)</div><div class="kpi-value">6,247</div><div class="kpi-sub">↑ 8% vs Mar</div></div>
+          <div class="kpi-card orange"><div class="kpi-label">Avg Session/Member</div><div class="kpi-value">1.3</div><div class="kpi-sub">monthly</div></div>
+          <div class="kpi-card"><div class="kpi-label">Cost Per Session</div><div class="kpi-value">₦3,500</div></div>
+          <div class="kpi-card blue"><div class="kpi-label">Total Gym Spend (Apr)</div><div class="kpi-value">₦21.9M</div></div>
+        </div>
+        <div class="two-col">
+          <div class="card">
+            <div class="card-header"><div class="card-title">By Plan Type</div></div>
+            <div class="card-body" style="padding:0;">
+              <table class="data-table">
+                <thead><tr><th>Plan</th><th>Members</th><th>Sessions</th><th>Avg</th></tr></thead>
+                <tbody>
+                  <tr><td>Magnum</td><td>1,204</td><td>2,811</td><td>2.3</td></tr>
+                  <tr><td>Sapphire</td><td>1,892</td><td>2,337</td><td>1.2</td></tr>
+                  <tr><td>Ruby</td><td>1,716</td><td>1,099</td><td>0.6</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title">By Provider (Top 5)</div></div>
+            <div class="card-body" style="padding:0;">
+              <table class="data-table">
+                <thead><tr><th>Gym</th><th>Sessions</th><th>Spend</th></tr></thead>
+                <tbody>
+                  <tr><td>iFitness Lekki</td><td>1,247</td><td>₦4.36M</td></tr>
+                  <tr><td>EkoFit V.I.</td><td>891</td><td>₦3.12M</td></tr>
+                  <tr><td>FitnessOne Ikeja</td><td>712</td><td>₦2.49M</td></tr>
+                  <tr><td>IronBody Lagos Is.</td><td>521</td><td>₦1.82M</td></tr>
+                  <tr><td>PureGym Ajah</td><td>362</td><td>₦1.27M</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-primary">📥 Export Excel</button>
+          <button class="btn btn-secondary">📥 Export PDF</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     PORTAL 4: TECH SCOPING
+════════════════════════════════════════════════════ -->
+<div id="portal-tech" class="portal-view">
+  <div class="main-content" style="max-width:1100px;margin:0 auto;">
+    <div class="page-header" style="padding-top:24px;">
+      <div class="page-title">Technical Scoping — Leadway Wellness Portal</div>
+      <div class="page-sub">Architecture, stack, integration points, and delivery phases</div>
+    </div>
+
+    <div class="tech-grid">
+      <div class="tech-card">
+        <div class="tech-card-header">
+          <div class="tech-icon-box blue">🖥️</div>
+          <div><div class="tech-card-title">Frontend (3 Portals)</div><div class="tech-card-sub">Web + Mobile-responsive</div></div>
+        </div>
+        <div class="tech-stack-items">
+          <span class="tech-chip highlight">React 18</span>
+          <span class="tech-chip">TypeScript</span>
+          <span class="tech-chip">TailwindCSS</span>
+          <span class="tech-chip">Vite</span>
+          <span class="tech-chip">React Query</span>
+          <span class="tech-chip">Zustand</span>
+          <span class="tech-chip">PWA</span>
+        </div>
+      </div>
+      <div class="tech-card">
+        <div class="tech-card-header">
+          <div class="tech-icon-box red">⚙️</div>
+          <div><div class="tech-card-title">Backend API</div><div class="tech-card-sub">REST + WebSocket</div></div>
+        </div>
+        <div class="tech-stack-items">
+          <span class="tech-chip highlight">.NET 8 Web API</span>
+          <span class="tech-chip">C#</span>
+          <span class="tech-chip">Entity Framework</span>
+          <span class="tech-chip">SQL Server</span>
+          <span class="tech-chip">Redis (OTP cache)</span>
+          <span class="tech-chip">SignalR</span>
+        </div>
+      </div>
+      <div class="tech-card">
+        <div class="tech-card-header">
+          <div class="tech-icon-box green">🔐</div>
+          <div><div class="tech-card-title">OTP & Security</div><div class="tech-card-sub">Zero-trust session model</div></div>
+        </div>
+        <div class="tech-stack-items">
+          <span class="tech-chip highlight">TOTP / HOTP</span>
+          <span class="tech-chip">Redis TTL</span>
+          <span class="tech-chip">JWT Auth</span>
+          <span class="tech-chip">Role-based ACL</span>
+          <span class="tech-chip">Audit Logging</span>
+          <span class="tech-chip">IP Tracking</span>
+          <span class="tech-chip">Session Timeout</span>
+        </div>
+      </div>
+      <div class="tech-card">
+        <div class="tech-card-header">
+          <div class="tech-icon-box orange">💬</div>
+          <div><div class="tech-card-title">Notifications</div><div class="tech-card-sub">WhatsApp + Email</div></div>
+        </div>
+        <div class="tech-stack-items">
+          <span class="tech-chip highlight">WhatsApp Business API</span>
+          <span class="tech-chip">360Dialog / Twilio</span>
+          <span class="tech-chip">SendGrid</span>
+          <span class="tech-chip">Webhook handler</span>
+          <span class="tech-chip">Retry queue</span>
+        </div>
+      </div>
+      <div class="tech-card">
+        <div class="tech-card-header">
+          <div class="tech-icon-box purple">🔗</div>
+          <div><div class="tech-card-title">Integrations</div><div class="tech-card-sub">Claims & Provider systems</div></div>
+        </div>
+        <div class="tech-stack-items">
+          <span class="tech-chip highlight">PrognosisAPI</span>
+          <span class="tech-chip">Claims System API</span>
+          <span class="tech-chip">Member Registry</span>
+          <span class="tech-chip">Paystack/Flutterwave</span>
+          <span class="tech-chip">Google Maps API</span>
+          <span class="tech-chip">PDF Generation</span>
+        </div>
+      </div>
+      <div class="tech-card">
+        <div class="tech-card-header">
+          <div class="tech-icon-box navy">☁️</div>
+          <div><div class="tech-card-title">Infrastructure</div><div class="tech-card-sub">Hosting & DevOps</div></div>
+        </div>
+        <div class="tech-stack-items">
+          <span class="tech-chip highlight">Azure App Service</span>
+          <span class="tech-chip">Azure SQL</span>
+          <span class="tech-chip">Azure Redis Cache</span>
+          <span class="tech-chip">Azure Blob (docs)</span>
+          <span class="tech-chip">GitHub Actions</span>
+          <span class="tech-chip">Docker</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col" style="margin-top:20px;">
+      <div class="card">
+        <div class="card-header"><div class="card-title">🗺️ Delivery Phases</div></div>
+        <div class="card-body">
+          <ul class="phase-list">
+            <li><span class="phase-num">1</span><div><strong>Phase 1 (Weeks 1–4)</strong> — Provider & Enrollee portals. OTP generation + validation. Member eligibility check. WhatsApp confirmation webhook. Claim auto-creation.</div></li>
+            <li><span class="phase-num">2</span><div><strong>Phase 2 (Weeks 5–7)</strong> — Advocate portal. Member 360° view. FWA dashboard. Audit trail. Advocate OTP with logging. Gym email trigger.</div></li>
+            <li><span class="phase-num">3</span><div><strong>Phase 3 (Weeks 8–9)</strong> — Payment & top-up flow. Paystack integration. Discount engine. Claim batch submission. Pay advice PDF generation.</div></li>
+            <li><span class="phase-num">4</span><div><strong>Phase 4 (Week 10)</strong> — FWA → claim reversal API pipeline. Utilization reporting module. UAT, load testing, security audit.</div></li>
+            <li><span class="phase-num">5</span><div><strong>Phase 5 (Week 11–12)</strong> — Pilot with 2 gyms + 200 members. Hypercare period. Go-live rollout plan.</div></li>
+          </ul>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">🔑 Key Data Entities</div></div>
+          <div class="card-body">
+            <div class="tech-stack-items">
+              <span class="tech-chip highlight">Member</span>
+              <span class="tech-chip highlight">Enrollee Session</span>
+              <span class="tech-chip highlight">OTP Record</span>
+              <span class="tech-chip highlight">Gym Provider</span>
+              <span class="tech-chip highlight">Claim</span>
+              <span class="tech-chip highlight">FWA Case</span>
+              <span class="tech-chip">Audit Log</span>
+              <span class="tech-chip">Payment</span>
+              <span class="tech-chip">WhatsApp Response</span>
+              <span class="tech-chip">Notification</span>
+              <span class="tech-chip">Advocate Action</span>
+              <span class="tech-chip">Gym Rating</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <div class="card-header"><div class="card-title">⚡ Non-Functional Requirements</div></div>
+          <div class="card-body">
+            <table class="data-table" style="font-size:12px;">
+              <thead><tr><th>Metric</th><th>Target</th></tr></thead>
+              <tbody>
+                <tr><td>OTP generation latency</td><td>&lt; 500ms</td></tr>
+                <tr><td>OTP validity window</td><td>2 hours</td></tr>
+                <tr><td>WhatsApp delivery</td><td>&lt; 30 seconds</td></tr>
+                <tr><td>Claim auto-creation</td><td>On OTP validation (sync)</td></tr>
+                <tr><td>Portal uptime</td><td>99.5% SLA</td></tr>
+                <tr><td>Audit log retention</td><td>7 years (NAICOM)</td></tr>
+                <tr><td>Data encryption</td><td>AES-256 at rest + TLS 1.3</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:32px;">
+      <div class="card-header"><div class="card-title">🔄 Core OTP Claim Flow</div></div>
+      <div class="card-body">
+        <div class="stepper">
+          <div class="step done"><div class="step-circle">1</div><div class="step-label">Member Logs In</div></div>
+          <div class="step done"><div class="step-circle">2</div><div class="step-label">Generates OTP</div></div>
+          <div class="step done"><div class="step-circle">3</div><div class="step-label">Presents at Gym</div></div>
+          <div class="step done"><div class="step-circle">4</div><div class="step-label">Provider Validates</div></div>
+          <div class="step done"><div class="step-circle">5</div><div class="step-label">Claim Created</div></div>
+          <div class="step current"><div class="step-circle">6</div><div class="step-label">WA Confirmation</div></div>
+          <div class="step"><div class="step-circle">7</div><div class="step-label">Claim Confirmed</div></div>
+          <div class="step"><div class="step-circle">8</div><div class="step-label">Batch Submitted</div></div>
+          <div class="step"><div class="step-circle">9</div><div class="step-label">Paid</div></div>
+        </div>
+        <div style="font-size:12px;color:var(--grey4);margin-top:8px;">⚡ Steps 4→5 are synchronous (same API call). Steps 6→7 are async via WhatsApp webhook. FWA path: Step 6 "NO" → FWA Case created → Claim held → Case closed → Claim reversed via API.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MODALS -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal">
+    <div class="modal-icon" id="modal-icon">💬</div>
+    <div class="modal-title" id="modal-title">WhatsApp Confirmation Received</div>
+    <div class="modal-body" id="modal-body">Favour replied YES — session confirmed. Claim is live.</div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="closeModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let otpTimer = null;
+
+function switchPortal(p) {
+  document.querySelectorAll('.portal-view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('portal-' + p).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+
+function setActiveNav(parent, id) {
+  document.querySelectorAll('#portal-' + parent + ' .nav-item').forEach(n => n.classList.remove('active'));
+  event && event.currentTarget && event.currentTarget.classList.add('active');
+}
+
+function enrolleeScreen(s) {
+  document.querySelectorAll('#portal-enrollee .screen').forEach(x => x.classList.remove('active'));
+  document.getElementById('e-' + s).classList.add('active');
+  document.querySelectorAll('#portal-enrollee .nav-item').forEach(n => n.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+}
+
+function providerScreen(s) {
+  document.querySelectorAll('#portal-provider .screen').forEach(x => x.classList.remove('active'));
+  document.getElementById('p-' + s).classList.add('active');
+  document.querySelectorAll('#portal-provider .nav-item').forEach(n => n.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+}
+
+function advocateScreen(s) {
+  document.querySelectorAll('#portal-advocate .screen').forEach(x => x.classList.remove('active'));
+  document.getElementById('a-' + s).classList.add('active');
+  document.querySelectorAll('#portal-advocate .nav-item').forEach(n => n.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+}
+
+function generateOTP() {
+  const code = Math.floor(100000 + Math.random() * 900000);
+  document.getElementById('otp-value').textContent = code;
+  document.getElementById('otp-result').style.display = 'block';
+  let secs = 119;
+  if (otpTimer) clearInterval(otpTimer);
+  otpTimer = setInterval(() => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    document.getElementById('otp-countdown').textContent = m + ':' + (s < 10 ? '0' : '') + s;
+    secs--;
+    if (secs < 0) clearInterval(otpTimer);
+  }, 1000);
+}
+
+function showConfirmModal(resp) {
+  const modal = document.getElementById('confirm-modal');
+  if (resp === 'yes') {
+    document.getElementById('modal-icon').textContent = '✅';
+    document.getElementById('modal-title').textContent = 'Session Confirmed!';
+    document.getElementById('modal-body').textContent = 'Favour replied YES — gym session confirmed. Claim stands and is queued for submission by iFitness Lekki.';
+  } else {
+    document.getElementById('modal-icon').textContent = '🚨';
+    document.getElementById('modal-title').textContent = 'Fraud Alert Triggered!';
+    document.getElementById('modal-body').textContent = 'Favour replied NO. Fraud alert sent to FWA unit. Claim held pending investigation. Provider notified with case reference FWA-2026-042.';
+  }
+  modal.classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('confirm-modal').classList.remove('active');
+}
+
+function rateGym(n) {
+  document.getElementById('rating-feedback').textContent = ['', 'Poor 😞', 'Fair 😐', 'Good 🙂', 'Great 😊', 'Excellent! 🤩'][n] + ' — Rating submitted. Thank you!';
+  document.getElementById('rating-feedback').style.color = n >= 4 ? 'var(--green)' : n === 3 ? 'var(--orange)' : 'var(--red)';
+}
+
+function hoverStars(n) {
+  const spans = document.querySelectorAll('#stars span');
+  spans.forEach((s, i) => { s.textContent = i < n ? '⭐' : '☆'; });
+}
+
+function resetStars() {
+  document.querySelectorAll('#stars span').forEach(s => s.textContent = '⭐');
+}
+
+function filterGyms(val) {
+  // just visual feedback
+}
+
+function checkEligibility() {
+  document.getElementById('elig-result').style.display = 'block';
+}
+
+function validateOTPProvider() {
+  document.getElementById('otp-valid-result').style.display = 'block';
+}
+
+function nextOTPField(el, idx) {
+  if (el.value.length === 1 && idx < 6) {
+    el.parentElement.children[idx].focus();
+  }
+}
+
+function showGenerateForMember() {
+  alert('Provider-generated OTP recorded in audit trail as provider-initiated. Member must have sessions remaining.');
+}
+
+function selectPkg(n) {
+  document.querySelectorAll('[id^="pkg"]').forEach(p => p.style.border = '2px solid transparent');
+  document.getElementById('pkg' + n).style.border = '2px solid var(--red)';
+  const pkgs = [null, {name:'Monthly Pack', full:'₦9,600', disc:'−₦1,920', total:'₦7,680'}, {name:'Quarterly Pack', full:'₦32,400', disc:'−₦6,480', total:'₦25,920'}, {name:'Annual iFitness', full:'₦120,000', disc:'−₦24,000', total:'₦96,000'}];
+  const p = pkgs[n];
+  document.getElementById('cs-pkg').textContent = p.name;
+  document.getElementById('cs-full').textContent = p.full;
+  document.getElementById('cs-disc').textContent = p.disc;
+  document.getElementById('cs-total').textContent = p.total;
+  document.getElementById('checkout-summary').style.display = 'block';
+}
+
+function advSearch() {
+  document.getElementById('adv-member-view').style.display = 'block';
+}
+
+function advGenOTP() {
+  document.getElementById('adv-otp-result').style.display = 'block';
+}
+
+function closeFWA() {
+  document.getElementById('fwa-closed-msg').style.display = 'flex';
+}
+</script>
+</body>
+</html>

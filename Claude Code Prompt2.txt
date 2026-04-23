@@ -1,0 +1,1 @@
+give me all security vulnerabilities affecting the code leveraging owasp top 10, and any other critical/high severity vulnerability i should be interested in, Make sure to detail the affrected file and the recommendation for fix. And finally put all of this in a report in an excel sheet format. Name the report according to the scanned repository name
