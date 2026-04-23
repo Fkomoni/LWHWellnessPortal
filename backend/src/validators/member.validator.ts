@@ -7,6 +7,7 @@ export const generateSessionOtpSchema = z.object({
 export const rateGymSchema = z.object({
   sessionId: z.string().cuid('Invalid session ID'),
   rating: z.number().int().min(1).max(5),
+  comment: z.string().max(500).optional(),
 });
 
 export const paginationSchema = z.object({

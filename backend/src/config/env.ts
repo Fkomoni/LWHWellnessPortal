@@ -16,11 +16,25 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.string().regex(/^\d+$/).default('900000'),
   RATE_LIMIT_AUTH_MAX: z.string().regex(/^\d+$/).default('5'),
   RATE_LIMIT_API_MAX: z.string().regex(/^\d+$/).default('100'),
-  // WhatsApp / Notification (optional for prototype)
+  SESSION_IDLE_TIMEOUT_MINUTES: z.string().regex(/^\d+$/).default('30'),
+  // WhatsApp
   WHATSAPP_API_URL: z.string().url().optional(),
   WHATSAPP_API_KEY: z.string().optional(),
+  WHATSAPP_FROM_NUMBER: z.string().optional(),
+  WHATSAPP_WEBHOOK_SECRET: z.string().optional(),
+  // Email
   SENDGRID_API_KEY: z.string().optional(),
-  // Prototype: show OTP in response (NEVER in production)
+  SENDGRID_FROM_EMAIL: z.string().email().optional(),
+  SENDGRID_FROM_NAME: z.string().default('Leadway Wellness Portal'),
+  // Payment
+  PAYSTACK_SECRET_KEY: z.string().optional(),
+  PAYSTACK_PUBLIC_KEY: z.string().optional(),
+  PAYSTACK_WEBHOOK_SECRET: z.string().optional(),
+  // Maps
+  GOOGLE_MAPS_API_KEY: z.string().optional(),
+  // App URL for email links
+  APP_URL: z.string().url().default('http://localhost:5173'),
+  // Dev only
   OTP_VISIBLE_IN_DEV: z.string().default('false'),
 });
 

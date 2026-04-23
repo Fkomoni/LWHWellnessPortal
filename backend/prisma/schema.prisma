@@ -19,6 +19,13 @@ enum Role {
 enum OtpPurpose {
   AUTH
   SESSION
+  PROVIDER_AUTH // daily email OTP for provider portal second-factor
+}
+
+enum OtpGeneratedBy {
+  MEMBER
+  PROVIDER // flagged — provider generated on behalf of member
+  ADVOCATE // advocate generated — sent to member+provider via email
 }
 
 enum SessionStatus {
@@ -29,11 +36,11 @@ enum SessionStatus {
 }
 
 enum ClaimStatus {
-  PENDING
-  SUBMITTED
-  APPROVED
+  PENDING     // session validated, claim auto-created
+  SUBMITTED   // provider submitted batch
+  APPROVED    // processed for payment
   REJECTED
-  REVERSED
+  REVERSED    // FWA case closed → auto-reversed
 }
 
 enum FwaStatus {
@@ -43,27 +50,53 @@ enum FwaStatus {
   ESCALATED
 }
 
+enum ProviderStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING_REVIEW
+}
+
+enum WhatsAppResponseType {
+  YES
+  NO
+}
+
+enum NotificationChannel {
+  WHATSAPP
+  EMAIL
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 model Member {
-  id               String   @id @default(cuid())
-  memberRef        String   @unique // e.g. "21000645/0" or "LWH-004822"
+  id               String    @id @default(cuid())
+  memberRef        String    @unique
   firstName        String
   lastName         String
-  phone            String   @unique
-  email            String?  @unique
-  role             Role     @default(ENROLLEE)
-  isActive         Boolean  @default(true)
-  sessionsPerMonth Int      @default(12)
-  sessionsUsed     Int      @default(0)
-  resetDate        DateTime? // next monthly reset
-  spouseId         String?  // linked spouse member id
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  phone            String    @unique
+  email            String?   @unique
+  role             Role      @default(ENROLLEE)
+  isActive         Boolean   @default(true)
+  sessionsPerMonth Int       @default(12)
+  sessionsUsed     Int       @default(0)
+  resetDate        DateTime?
+  spouseId         String?
+  planType         String    @default("STANDARD") // STANDARD | PREMIUM
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   sessions         Session[]
   otpRecords       OtpRecord[]
   auditLogs        AuditLog[]
   ratings          GymRating[]
   refreshTokens    RefreshToken[]
+  notifications    Notification[]
+  topUps           TopUp[]
 
   @@index([phone])
   @@index([memberRef])
@@ -71,37 +104,50 @@ model Member {
 }
 
 model Provider {
-  id        String   @id @default(cuid())
-  gymCode   String   @unique // e.g. "GYM-001"
-  gymName   String
-  phone     String   @unique
-  email     String   @unique
-  location  String
-  lga       String
-  state     String   @default("Lagos")
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String         @id @default(cuid())
+  gymCode     String         @unique
+  gymName     String
+  phone       String         @unique
+  email       String         @unique
+  location    String
+  address     String?
+  lga         String
+  state       String         @default("Lagos")
+  latitude    Float?
+  longitude   Float?
+  hours       Json?          // { mon: "6am-10pm", ... }
+  amenities   String[]       // ["pool", "sauna", "classes", ...]
+  status      ProviderStatus @default(ACTIVE)
+  statusNote  String?        // reason for suspension
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
-  sessions  Session[]
-  claims    Claim[]
-  fwaCases  FwaCase[]
+  sessions    Session[]
+  claims      Claim[]
+  fwaCases    FwaCase[]
+  payAdvices  PayAdvice[]
 
   @@index([gymCode])
+  @@index([status])
   @@map("providers")
 }
 
 model Session {
-  id               String        @id @default(cuid())
-  memberId         String
-  providerId       String
-  sessionOtpId     String        // references OtpRecord used for this session
-  status           SessionStatus @default(PENDING)
+  id              String         @id @default(cuid())
+  memberId        String
+  providerId      String
+  sessionOtpId    String
+  generatedBy     OtpGeneratedBy @default(MEMBER)
+  status          SessionStatus  @default(PENDING)
   whatsappVerified Boolean       @default(false)
-  fwaFlagged       Boolean       @default(false)
-  sessionDate      DateTime      @default(now())
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  whatsappSentAt  DateTime?
+  memberResponse  WhatsAppResponseType?
+  memberResponseAt DateTime?
+  lastVisitDate   DateTime?      // captured when member says No
+  fwaFlagged      Boolean        @default(false)
+  sessionDate     DateTime       @default(now())
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   member   Member   @relation(fields: [memberId], references: [id])
   provider Provider @relation(fields: [providerId], references: [id])
@@ -116,16 +162,18 @@ model Session {
 }
 
 model OtpRecord {
-  id        String     @id @default(cuid())
-  memberId  String?
-  phone     String
-  otpHash   String     // bcrypt hash — never store plaintext
-  purpose   OtpPurpose
-  expiresAt DateTime
-  usedAt    DateTime?
-  attempts  Int        @default(0) // track brute-force attempts
-  ipAddress String?
-  createdAt DateTime   @default(now())
+  id            String         @id @default(cuid())
+  memberId      String?
+  phone         String
+  otpHash       String
+  purpose       OtpPurpose
+  generatedBy   OtpGeneratedBy @default(MEMBER)
+  generatedById String?        // advocate/provider userId who generated it
+  expiresAt     DateTime
+  usedAt        DateTime?
+  attempts      Int            @default(0)
+  ipAddress     String?
+  createdAt     DateTime       @default(now())
 
   member Member? @relation(fields: [memberId], references: [id])
 
@@ -137,7 +185,7 @@ model OtpRecord {
 model RefreshToken {
   id        String   @id @default(cuid())
   memberId  String
-  tokenHash String   @unique // SHA-256 hash of the token
+  tokenHash String   @unique
   expiresAt DateTime
   revokedAt DateTime?
   ipAddress String?
@@ -155,13 +203,13 @@ model AuditLog {
   id         String   @id @default(cuid())
   userId     String?
   userRole   String?
-  action     String   // e.g. "AUTH_LOGIN", "OTP_GENERATE", "SESSION_VALIDATE"
-  resource   String   // e.g. "auth", "member", "provider"
+  action     String
+  resource   String
   resourceId String?
   ipAddress  String
   userAgent  String?
-  status     String   // "SUCCESS" | "FAILURE"
-  details    Json?    // additional context (sanitised — no PII)
+  status     String
+  details    Json?
   timestamp  DateTime @default(now())
 
   member Member? @relation(fields: [userId], references: [id])
@@ -173,38 +221,66 @@ model AuditLog {
 }
 
 model Claim {
-  id          String      @id @default(cuid())
-  sessionId   String      @unique
-  providerId  String
-  amount      Float
-  status      ClaimStatus @default(PENDING)
-  submittedAt DateTime?
-  processedAt DateTime?
-  payAdviceRef String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id           String      @id @default(cuid())
+  sessionId    String      @unique
+  providerId   String
+  amount       Float
+  status       ClaimStatus @default(PENDING)
+  submittedAt  DateTime?
+  processedAt  DateTime?
+  payAdviceId  String?
+  reversedAt   DateTime?
+  reversalNote String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
-  session  Session  @relation(fields: [sessionId], references: [id])
-  provider Provider @relation(fields: [providerId], references: [id])
+  session   Session   @relation(fields: [sessionId], references: [id])
+  provider  Provider  @relation(fields: [providerId], references: [id])
+  payAdvice PayAdvice? @relation(fields: [payAdviceId], references: [id])
 
   @@index([providerId])
   @@index([status])
   @@map("claims")
 }
 
+// Pay advice = payment batch document for providers
+model PayAdvice {
+  id           String   @id @default(cuid())
+  providerId   String
+  reference    String   @unique // e.g. "PAY-2026-04-GYM001"
+  periodStart  DateTime
+  periodEnd    DateTime
+  totalClaims  Int
+  totalAmount  Float
+  pdfPath      String?  // path/URL to generated PDF
+  issuedAt     DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  provider Provider @relation(fields: [providerId], references: [id])
+  claims   Claim[]
+
+  @@index([providerId])
+  @@map("pay_advices")
+}
+
 model FwaCase {
-  id          String    @id @default(cuid())
-  caseRef     String    @unique // e.g. "FWA-2026-041"
-  memberId    String
-  providerId  String
-  sessionId   String?   @unique
-  flagType    String    // "MEMBER_DENIED_VISIT" | "PROVIDER_GENERATED_OTP" | etc.
-  status      FwaStatus @default(OPEN)
-  description String
-  investigatorId String? // advocate userId
-  createdAt   DateTime  @default(now())
-  resolvedAt  DateTime?
-  updatedAt   DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  caseRef        String    @unique
+  memberId       String
+  providerId     String
+  sessionId      String?   @unique
+  flagType       String
+  status         FwaStatus @default(OPEN)
+  description    String
+  investigatorId String?
+  memberStatement String?  // what member said when they replied "No"
+  lastVisitDate  DateTime? // member's stated last visit
+  resolvedBy     String?
+  resolvedAt     DateTime?
+  resolution     String?   // resolution notes
+  claimReversed  Boolean   @default(false)
+  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime  @default(now())
 
   provider Provider @relation(fields: [providerId], references: [id])
   session  Session? @relation(fields: [sessionId], references: [id])
@@ -219,7 +295,8 @@ model GymRating {
   memberId   String
   sessionId  String   @unique
   providerId String
-  rating     Int      // 1–5 stars
+  rating     Int
+  comment    String?
   createdAt  DateTime @default(now())
 
   member  Member  @relation(fields: [memberId], references: [id])
@@ -227,4 +304,79 @@ model GymRating {
 
   @@index([providerId])
   @@map("gym_ratings")
+}
+
+// In-app + push notification model
+model Notification {
+  id        String             @id @default(cuid())
+  memberId  String
+  title     String
+  body      String
+  channel   NotificationChannel
+  status    NotificationStatus @default(PENDING)
+  readAt    DateTime?
+  sentAt    DateTime?
+  metadata  Json?
+  createdAt DateTime           @default(now())
+
+  member Member @relation(fields: [memberId], references: [id])
+
+  @@index([memberId, readAt])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// Every email sent from any portal is logged here (regulatory requirement)
+model CommunicationLog {
+  id           String   @id @default(cuid())
+  senderId     String   // userId of advocate/system
+  senderName   String
+  recipientId  String?  // memberId or external
+  recipientEmail String
+  subject      String
+  body         String
+  emailType    String   // "GYM_NETWORK_INFO" | "OTP_DELIVERY" | "FWA_NOTIFICATION" | etc.
+  metadata     Json?
+  sentAt       DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([senderId])
+  @@index([recipientId])
+  @@index([sentAt])
+  @@map("communication_logs")
+}
+
+// Top-up / additional session purchases
+model TopUp {
+  id              String   @id @default(cuid())
+  memberId        String
+  sessionCount    Int      // number of sessions purchased
+  amount          Float    // amount charged
+  discountApplied Float    @default(0) // 20% Leadway discount
+  plan            String   // "MONTHLY" | "QUARTERLY" | "ANNUAL"
+  provider        String   @default("PAYSTACK") // payment gateway
+  paymentRef      String   @unique // gateway reference
+  status          String   @default("PENDING") // "PENDING" | "SUCCESS" | "FAILED"
+  paidAt          DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  member Member @relation(fields: [memberId], references: [id])
+
+  @@index([memberId])
+  @@map("top_ups")
+}
+
+// WhatsApp incoming responses (webhook)
+model WhatsAppMessage {
+  id          String   @id @default(cuid())
+  phone       String
+  messageId   String   @unique // WhatsApp message ID
+  body        String   // raw message content
+  sessionId   String?  // linked session if matched
+  processed   Boolean  @default(false)
+  receivedAt  DateTime @default(now())
+
+  @@index([phone])
+  @@map("whatsapp_messages")
 }

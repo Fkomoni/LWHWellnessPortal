@@ -3,6 +3,7 @@ import authRouter from './auth';
 import memberRouter from './member';
 import providerRouter from './provider';
 import advocateRouter from './advocate';
+import webhookRouter from './webhook';
 
 const router = Router();
 
@@ -10,8 +11,9 @@ router.use('/auth', authRouter);
 router.use('/member', memberRouter);
 router.use('/provider', providerRouter);
 router.use('/advocate', advocateRouter);
+// Webhooks have their own raw body parsing needs — no JSON size limit
+router.use('/webhooks', webhookRouter);
 
-// Health check — no auth required
 router.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), service: 'lwh-wellness-api' });
 });
