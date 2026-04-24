@@ -85,11 +85,14 @@ services:
         value: "false"
 
       # ── Email — Leadway Prognosis internal API ────────────────────────────
-      # Without PROGNOSIS_API_TOKEN, emails are logged only (mock mode).
+      # The app auto-fetches and caches a Bearer token every 55 min.
+      # Without USERNAME/PASSWORD, emails are logged only (mock mode).
       - key: PROGNOSIS_API_URL
         value: https://prognosis-api.leadwayhealth.com
-      - key: PROGNOSIS_API_TOKEN
-        sync: false          # Bearer token for the Prognosis email API
+      - key: PROGNOSIS_USERNAME
+        sync: false          # Service-account username (e.g. PrognosisTech)
+      - key: PROGNOSIS_PASSWORD
+        sync: false          # Service-account password
 
       # ── WhatsApp (360Dialog) ───────────────────────────────────────────────
       # Optional. Without these, WhatsApp notifications are skipped silently.

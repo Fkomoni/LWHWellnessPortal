@@ -2,6 +2,7 @@ import { env } from '../config/env';
 import { db } from '../config/database';
 import { logger } from '../utils/logger';
 import { NotificationChannel } from '@prisma/client';
+import { getPrognosisToken, invalidatePrognosisToken, PROGNOSIS_HEADERS } from './prognosis.service';
 
 // ─── WhatsApp ─────────────────────────────────────────────────────────────
 
@@ -81,49 +82,62 @@ interface EmailParams {
   metadata?: Record<string, unknown>;
 }
 
+async function callSendEmailAlert(token: string, params: EmailParams): Promise<Response> {
+  return fetch(`${env.PROGNOSIS_API_URL}/api/EnrolleeProfile/SendEmailAlert`, {
+    method: 'POST',
+    headers: { ...PROGNOSIS_HEADERS, Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      EmailAddress: params.to,
+      CC: '',
+      BCC: '',
+      Subject: params.subject,
+      MessageBody: params.body,
+      Attachments: null,
+      Category: params.emailType,
+      UserId: 0,
+      ProviderId: 0,
+      ServiceId: 0,
+      Reference: '',
+      TransactionType: '',
+    }),
+  });
+}
+
 export async function sendEmail(params: EmailParams): Promise<boolean> {
   const senderName = params.senderName ?? 'Leadway Wellness Portal';
   const senderEmail = 'noreply@leadwayhealth.com';
 
-  if (!env.PROGNOSIS_API_TOKEN) {
+  if (!env.PROGNOSIS_USERNAME || !env.PROGNOSIS_PASSWORD) {
     logger.info('[Email MOCK]', { to: params.to, subject: params.subject, type: params.emailType });
     await logCommunication({ ...params, senderName, senderEmail });
     return true;
   }
 
   try {
-    const res = await fetch(
-      `${env.PROGNOSIS_API_URL}/api/EnrolleeProfile/SendEmailAlert`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': '*/*',
-          'Authorization': `Bearer ${env.PROGNOSIS_API_TOKEN}`,
-        },
-        body: JSON.stringify({
-          EmailAddress: params.to,
-          CC: '',
-          BCC: '',
-          Subject: params.subject,
-          MessageBody: params.body,
-          Attachments: null,
-          Category: params.emailType,
-          UserId: 0,
-          ProviderId: 0,
-          ServiceId: 0,
-          Reference: '',
-          TransactionType: '',
-        }),
-      },
-    );
+    let token = await getPrognosisToken();
+    let res = await callSendEmailAlert(token, params);
 
-    if (res.ok) {
-      await logCommunication({ ...params, senderName, senderEmail });
-      return true;
+    // On 401 the token expired early — invalidate, fetch fresh, retry once.
+    if (res.status === 401) {
+      invalidatePrognosisToken();
+      token = await getPrognosisToken();
+      res = await callSendEmailAlert(token, params);
     }
-    logger.error('Prognosis email API error', { status: res.status, type: params.emailType });
-    return false;
+
+    if (!res.ok) {
+      logger.error('Prognosis email API HTTP error', { status: res.status, type: params.emailType });
+      return false;
+    }
+
+    // Prognosis returns HTTP 200 even on failure — detect by body content.
+    const text = await res.text();
+    if (text.toLowerCase().includes('fail')) {
+      logger.error('Prognosis email API returned failure', { response: text, type: params.emailType });
+      return false;
+    }
+
+    await logCommunication({ ...params, senderName, senderEmail });
+    return true;
   } catch (err) {
     logger.error('Email send failed', { to: '[REDACTED]', err });
     return false;

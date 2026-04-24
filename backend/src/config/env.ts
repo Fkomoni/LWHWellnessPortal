@@ -24,7 +24,8 @@ const envSchema = z.object({
   WHATSAPP_WEBHOOK_SECRET: z.string().optional(),
   // Email — Leadway Prognosis internal API
   PROGNOSIS_API_URL: z.string().url().default('https://prognosis-api.leadwayhealth.com'),
-  PROGNOSIS_API_TOKEN: z.string().optional(),
+  PROGNOSIS_USERNAME: z.string().optional(),
+  PROGNOSIS_PASSWORD: z.string().optional(),
   // Payment
   PAYSTACK_SECRET_KEY: z.string().optional(),
   PAYSTACK_PUBLIC_KEY: z.string().optional(),
