@@ -22,10 +22,14 @@ const envSchema = z.object({
   WHATSAPP_API_KEY: z.string().optional(),
   WHATSAPP_FROM_NUMBER: z.string().optional(),
   WHATSAPP_WEBHOOK_SECRET: z.string().optional(),
-  // Email
-  SENDGRID_API_KEY: z.string().optional(),
-  SENDGRID_FROM_EMAIL: z.string().email().optional(),
-  SENDGRID_FROM_NAME: z.string().default('Leadway Wellness Portal'),
+  // Email (SMTP)
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().regex(/^\d+$/).default('587'),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  SMTP_FROM_EMAIL: z.string().email().optional(),
+  SMTP_FROM_NAME: z.string().default('Leadway Wellness Portal'),
+  SMTP_SECURE: z.string().default('false'),
   // Payment
   PAYSTACK_SECRET_KEY: z.string().optional(),
   PAYSTACK_PUBLIC_KEY: z.string().optional(),

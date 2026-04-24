@@ -1,7 +1,18 @@
+import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 import { db } from '../config/database';
 import { logger } from '../utils/logger';
 import { NotificationChannel } from '@prisma/client';
+
+function createTransport() {
+  if (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASSWORD) return null;
+  return nodemailer.createTransport({
+    host: env.SMTP_HOST,
+    port: Number(env.SMTP_PORT),
+    secure: env.SMTP_SECURE === 'true',
+    auth: { user: env.SMTP_USER, pass: env.SMTP_PASSWORD },
+  });
+}
 
 // ─── WhatsApp ─────────────────────────────────────────────────────────────
 
@@ -82,35 +93,25 @@ interface EmailParams {
 }
 
 export async function sendEmail(params: EmailParams): Promise<boolean> {
-  const senderName = params.senderName ?? env.SENDGRID_FROM_NAME;
-  const senderEmail = env.SENDGRID_FROM_EMAIL ?? 'noreply@leadwayhealth.com';
+  const senderName = params.senderName ?? env.SMTP_FROM_NAME;
+  const senderEmail = env.SMTP_FROM_EMAIL ?? 'noreply@leadwayhealth.com';
 
-  if (!env.SENDGRID_API_KEY) {
+  const transport = createTransport();
+  if (!transport) {
     logger.info('[Email MOCK]', { to: params.to, subject: params.subject, type: params.emailType });
     await logCommunication({ ...params, senderName, senderEmail });
     return true;
   }
 
   try {
-    const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.SENDGRID_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        personalizations: [{ to: [{ email: params.to }] }],
-        from: { email: senderEmail, name: senderName },
-        subject: params.subject,
-        content: [{ type: 'text/plain', value: params.body }],
-      }),
+    await transport.sendMail({
+      from: `"${senderName}" <${senderEmail}>`,
+      to: params.to,
+      subject: params.subject,
+      text: params.body,
     });
-
-    if (res.ok) {
-      await logCommunication({ ...params, senderName, senderEmail });
-      return true;
-    }
-    return false;
+    await logCommunication({ ...params, senderName, senderEmail });
+    return true;
   } catch (err) {
     logger.error('Email send failed', { to: '[REDACTED]', err });
     return false;
