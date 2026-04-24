@@ -1,18 +1,7 @@
-import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 import { db } from '../config/database';
 import { logger } from '../utils/logger';
 import { NotificationChannel } from '@prisma/client';
-
-function createTransport() {
-  if (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASSWORD) return null;
-  return nodemailer.createTransport({
-    host: env.SMTP_HOST,
-    port: Number(env.SMTP_PORT),
-    secure: env.SMTP_SECURE === 'true',
-    auth: { user: env.SMTP_USER, pass: env.SMTP_PASSWORD },
-  });
-}
 
 // ─── WhatsApp ─────────────────────────────────────────────────────────────
 
@@ -93,25 +82,48 @@ interface EmailParams {
 }
 
 export async function sendEmail(params: EmailParams): Promise<boolean> {
-  const senderName = params.senderName ?? env.SMTP_FROM_NAME;
-  const senderEmail = env.SMTP_FROM_EMAIL ?? 'noreply@leadwayhealth.com';
+  const senderName = params.senderName ?? 'Leadway Wellness Portal';
+  const senderEmail = 'noreply@leadwayhealth.com';
 
-  const transport = createTransport();
-  if (!transport) {
+  if (!env.PROGNOSIS_API_TOKEN) {
     logger.info('[Email MOCK]', { to: params.to, subject: params.subject, type: params.emailType });
     await logCommunication({ ...params, senderName, senderEmail });
     return true;
   }
 
   try {
-    await transport.sendMail({
-      from: `"${senderName}" <${senderEmail}>`,
-      to: params.to,
-      subject: params.subject,
-      text: params.body,
-    });
-    await logCommunication({ ...params, senderName, senderEmail });
-    return true;
+    const res = await fetch(
+      `${env.PROGNOSIS_API_URL}/api/EnrolleeProfile/SendEmailAlert`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': '*/*',
+          'Authorization': `Bearer ${env.PROGNOSIS_API_TOKEN}`,
+        },
+        body: JSON.stringify({
+          EmailAddress: params.to,
+          CC: '',
+          BCC: '',
+          Subject: params.subject,
+          MessageBody: params.body,
+          Attachments: null,
+          Category: params.emailType,
+          UserId: 0,
+          ProviderId: 0,
+          ServiceId: 0,
+          Reference: '',
+          TransactionType: '',
+        }),
+      },
+    );
+
+    if (res.ok) {
+      await logCommunication({ ...params, senderName, senderEmail });
+      return true;
+    }
+    logger.error('Prognosis email API error', { status: res.status, type: params.emailType });
+    return false;
   } catch (err) {
     logger.error('Email send failed', { to: '[REDACTED]', err });
     return false;

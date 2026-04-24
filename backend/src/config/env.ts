@@ -22,14 +22,9 @@ const envSchema = z.object({
   WHATSAPP_API_KEY: z.string().optional(),
   WHATSAPP_FROM_NUMBER: z.string().optional(),
   WHATSAPP_WEBHOOK_SECRET: z.string().optional(),
-  // Email (SMTP)
-  SMTP_HOST: z.string().optional(),
-  SMTP_PORT: z.string().regex(/^\d+$/).default('587'),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASSWORD: z.string().optional(),
-  SMTP_FROM_EMAIL: z.string().email().optional(),
-  SMTP_FROM_NAME: z.string().default('Leadway Wellness Portal'),
-  SMTP_SECURE: z.string().default('false'),
+  // Email — Leadway Prognosis internal API
+  PROGNOSIS_API_URL: z.string().url().default('https://prognosis-api.leadwayhealth.com'),
+  PROGNOSIS_API_TOKEN: z.string().optional(),
   // Payment
   PAYSTACK_SECRET_KEY: z.string().optional(),
   PAYSTACK_PUBLIC_KEY: z.string().optional(),

@@ -84,23 +84,12 @@ services:
       - key: OTP_VISIBLE_IN_DEV
         value: "false"
 
-      # ── Email (SMTP) ──────────────────────────────────────────────────────
-      # Set all SMTP_* vars via the Render Dashboard → Environment tab.
-      # Without SMTP_HOST/USER/PASSWORD, emails are logged only (mock mode).
-      - key: SMTP_HOST
-        sync: false          # e.g. smtp.office365.com or smtp.gmail.com
-      - key: SMTP_PORT
-        value: "587"         # 587 = STARTTLS (most common), 465 = SSL
-      - key: SMTP_USER
-        sync: false          # the email address used for SMTP auth
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: SMTP_FROM_EMAIL
-        sync: false          # e.g. wellness@leadway.com
-      - key: SMTP_FROM_NAME
-        value: "Leadway Wellness Portal"
-      - key: SMTP_SECURE
-        value: "false"       # set to "true" only if using port 465
+      # ── Email — Leadway Prognosis internal API ────────────────────────────
+      # Without PROGNOSIS_API_TOKEN, emails are logged only (mock mode).
+      - key: PROGNOSIS_API_URL
+        value: https://prognosis-api.leadwayhealth.com
+      - key: PROGNOSIS_API_TOKEN
+        sync: false          # Bearer token for the Prognosis email API
 
       # ── WhatsApp (360Dialog) ───────────────────────────────────────────────
       # Optional. Without these, WhatsApp notifications are skipped silently.
