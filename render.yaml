@@ -48,20 +48,13 @@ services:
       - key: JWT_REFRESH_EXPIRY
         value: 7d
 
-      # CORS — resolved at deploy time from the actual frontend service URL.
-      # This handles the case where Render appends a random suffix to the hostname.
+      # CORS and APP_URL — must match the exact frontend service URL.
+      # Derived from the frontend service name below. If Render adds a random
+      # suffix to lwh-wellness-portal, update both values manually and redeploy.
       - key: CORS_ORIGIN
-        fromService:
-          name: lwh-wellness-portal
-          type: web
-          property: url
-
-      # APP_URL is used in email links and Paystack redirect URLs.
+        value: https://lwh-wellness-portal.onrender.com
       - key: APP_URL
-        fromService:
-          name: lwh-wellness-portal
-          type: web
-          property: url
+        value: https://lwh-wellness-portal.onrender.com
 
       # OTP configuration
       - key: OTP_EXPIRY_MINUTES
@@ -130,7 +123,6 @@ services:
   - type: web
     name: lwh-wellness-portal
     runtime: static
-    region: oregon
     plan: starter
     rootDir: frontend
     buildCommand: npm install && npm run build
