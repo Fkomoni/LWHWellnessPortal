@@ -1,5 +1,18 @@
-# Render deployment configuration
+# Render Blueprint — Leadway Wellness Portal
 # Docs: https://render.com/docs/render-yaml-reference
+#
+# BEFORE FIRST DEPLOY:
+#   1. Push this file to GitHub on the main branch.
+#   2. In Render Dashboard → New → Blueprint, connect the repo.
+#   3. Render will provision DB → API → Frontend in dependency order.
+#   4. Set the secrets marked "sync: false" in each service's Environment tab.
+#   5. After all services are live, run the seed once via the API service shell:
+#        npm run db:seed
+#
+# SERVICE URLS (derived from service names below):
+#   API  → https://lwh-wellness-api.onrender.com
+#   Web  → https://lwh-wellness-portal.onrender.com
+#   If Render appends a suffix due to name conflict, update VITE_API_URL manually.
 
 services:
   # ─── Backend API ──────────────────────────────────────────────────────────
@@ -9,18 +22,23 @@ services:
     region: oregon
     plan: starter
     rootDir: backend
+    # prisma generate must run before tsc so client types are available
     buildCommand: npm install && npm run db:generate && npm run build && npm run db:migrate
     startCommand: node dist/server.js
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3001
+
+      # PORT is intentionally omitted — Render injects $PORT automatically.
+      # Hardcoding PORT conflicts with Render's internal proxy and breaks health checks.
+
       - key: DATABASE_URL
         fromDatabase:
           name: lwh-wellness-db
           property: connectionString
+
+      # JWT secrets — Render generates cryptographically random 64-char values.
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
@@ -29,26 +47,86 @@ services:
         value: 15m
       - key: JWT_REFRESH_EXPIRY
         value: 7d
-      # CORS_ORIGIN will be set manually after frontend deploys
+
+      # CORS — resolved at deploy time from the actual frontend service URL.
+      # This handles the case where Render appends a random suffix to the hostname.
       - key: CORS_ORIGIN
-        value: https://lwh-wellness-portal.onrender.com
+        fromService:
+          name: lwh-wellness-portal
+          type: web
+          property: url
+
+      # APP_URL is used in email links and Paystack redirect URLs.
+      - key: APP_URL
+        fromService:
+          name: lwh-wellness-portal
+          type: web
+          property: url
+
+      # OTP configuration
       - key: OTP_EXPIRY_MINUTES
-        value: 120
+        value: "120"
       - key: OTP_MAX_ATTEMPTS
-        value: 5
+        value: "5"
+      - key: SESSION_OTP_LENGTH
+        value: "6"
+
+      # Session security
+      - key: SESSION_IDLE_TIMEOUT_MINUTES
+        value: "30"
+
+      # Password / hash
       - key: BCRYPT_ROUNDS
-        value: 12
+        value: "12"
+
+      # Rate limiting
       - key: RATE_LIMIT_WINDOW_MS
-        value: 900000
+        value: "900000"
       - key: RATE_LIMIT_AUTH_MAX
-        value: 5
+        value: "5"
       - key: RATE_LIMIT_API_MAX
-        value: 100
-      # NEVER set OTP_VISIBLE_IN_DEV=true in production
+        value: "100"
+
+      # NEVER enable OTP logging in production
       - key: OTP_VISIBLE_IN_DEV
         value: "false"
 
-  # ─── Frontend ─────────────────────────────────────────────────────────────
+      # ── Email (SendGrid) ───────────────────────────────────────────────────
+      # Set SENDGRID_API_KEY via the Render Dashboard → Environment tab.
+      # Without it, emails are logged to the CommunicationLog table but not sent.
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: SENDGRID_FROM_EMAIL
+        sync: false          # e.g. wellness@leadway.com
+      - key: SENDGRID_FROM_NAME
+        value: "Leadway Wellness Portal"
+
+      # ── WhatsApp (360Dialog) ───────────────────────────────────────────────
+      # Optional. Without these, WhatsApp notifications are skipped silently.
+      - key: WHATSAPP_API_URL
+        sync: false          # e.g. https://waba.360dialog.io/v1
+      - key: WHATSAPP_API_KEY
+        sync: false
+      - key: WHATSAPP_FROM_NUMBER
+        sync: false          # e.g. +2348012345678
+      - key: WHATSAPP_WEBHOOK_SECRET
+        sync: false          # Must match the secret you register with 360Dialog
+
+      # ── Paystack ──────────────────────────────────────────────────────────
+      # Optional. Without these, top-up payments use mock mode (dev/staging only).
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false
+      - key: PAYSTACK_WEBHOOK_SECRET
+        sync: false
+
+      # ── Google Maps ───────────────────────────────────────────────────────
+      # Optional. Without it, the Gym Finder map shows a placeholder instead.
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+
+  # ─── Frontend (static site) ───────────────────────────────────────────────
   - type: web
     name: lwh-wellness-portal
     runtime: static
@@ -69,13 +147,15 @@ services:
         value: strict-origin-when-cross-origin
       - path: /*
         name: Permissions-Policy
-        value: camera=(), microphone=(), geolocation=()
+        value: "camera=(), microphone=(), geolocation=()"
     routes:
-      # SPA routing — all routes serve index.html
+      # SPA — every path falls back to index.html so React Router handles routing.
       - type: rewrite
         source: /*
         destination: /index.html
     envVars:
+      # Build-time Vite variable. Derived from the API service name.
+      # If Render appends a random suffix to lwh-wellness-api, update this manually.
       - key: VITE_API_URL
         value: https://lwh-wellness-api.onrender.com/api
 
