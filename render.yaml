@@ -123,7 +123,6 @@ services:
   - type: web
     name: lwh-wellness-portal
     runtime: static
-    plan: starter
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
@@ -155,6 +154,6 @@ services:
 databases:
   - name: lwh-wellness-db
     region: oregon
-    plan: starter
+    plan: free
     databaseName: lwh_wellness
     user: lwh_user
