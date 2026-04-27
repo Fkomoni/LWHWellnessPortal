@@ -152,11 +152,13 @@ function extractName(obj: Record<string, unknown>) {
 
 function extractSchemeId(obj: Record<string, unknown>): string | null {
   for (const key of [
-    'Member_MemberUniqueID',                                           // gym lookup key (confirmed scale ~1000s)
-    'Member_ParentMemberUniqueID',
-    'Member_PlanID',                                                   // plan-level fallback (~100000s, may not match)
-    'Member_SchemeID', 'Member_PlanCode', 'Member_SchemeCode', 'Member_SubGroupID',
-    'SchemeID', 'PlanID', 'PlanCode', 'SchemeCode', 'SubGroupID', 'GroupCode',
+    // Confirmed correct value is ~139532 — try the most likely field names first
+    'SchemeNo', 'PlanNo', 'Member_SchemeNo', 'Member_PlanNo',
+    'Member_SchemeID', 'SchemeID',
+    'Member_PlanID', 'PlanID',                                         // Member_PlanID=139533 (off by 1 from expected)
+    'Member_PlanCode', 'Member_SchemeCode', 'Member_SubGroupID',
+    'PlanCode', 'SchemeCode', 'SubGroupID', 'GroupCode',
+    'Member_MemberUniqueID',                                           // last resort — wrong scale
   ]) {
     const val = obj[key];
     if ((typeof val === 'string' || typeof val === 'number') && String(val).trim()) {
@@ -316,7 +318,7 @@ export async function getGymsByScheme(schemeId: string): Promise<PrognosisGym[]>
 
   const url =
     `${env.PROGNOSIS_API_URL}/api/ListValues/GetGeneralGymandSpaByPlanCode` +
-    `?SchemeID=${encodeURIComponent(schemeId)}&NoOfRecords=100&pageSize=0`;
+    `?SchemeID=${encodeURIComponent(schemeId)}&MinimumID=0&NoOfRecords=100&pageSize=0`;
 
   let res: Response;
   try {
