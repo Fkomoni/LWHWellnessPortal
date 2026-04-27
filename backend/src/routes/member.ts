@@ -9,6 +9,7 @@ import { logAudit } from '../services/audit.service';
 import { createInAppNotification } from '../services/notification.service';
 import { initializePayment, verifyPayment, getAllPlans } from '../services/payment.service';
 import { getGymsByScheme, PrognosisUpstreamError } from '../services/prognosis.service';
+import { logger } from '../utils/logger';
 import { generateSessionOtpSchema, rateGymSchema, paginationSchema } from '../validators/member.validator';
 import { z } from 'zod';
 import { Role } from '@prisma/client';
@@ -159,7 +160,7 @@ router.get('/gyms', async (req: AuthRequest, res: Response): Promise<void> => {
       return;
     } catch (err) {
       if (!(err instanceof PrognosisUpstreamError)) throw err;
-      // Prognosis is down — fall through to local DB
+      logger.warn('gym finder: Prognosis failed, using local DB fallback', { cause: err.cause });
     }
   }
 

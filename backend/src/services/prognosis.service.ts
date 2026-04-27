@@ -221,11 +221,15 @@ export async function getEnrolleeBioData(enrolleeId: string): Promise<EnrolleeBi
 
   const rawBody: unknown = await res.json();
 
-  // Log shape (keys only, never values) — surfaces shape changes without leaking PII
+  // Log shape + record keys (never values) — surfaces available SchemeID-candidate fields
   logger.info('prognosis.enrollee.bio', {
     enrolleeId,
     status: res.status,
     bodyKeys: typeof rawBody === 'object' && rawBody !== null ? Object.keys(rawBody as object) : typeof rawBody,
+    recordKeys: (() => {
+      const r = unwrapBody(rawBody);
+      return r ? Object.keys(r) : null;
+    })(),
   });
 
   const record = unwrapBody(rawBody);
@@ -329,6 +333,7 @@ export async function getGymsByScheme(schemeId: string): Promise<PrognosisGym[]>
     throw new PrognosisUpstreamError('token rejected (401)');
   }
   if (!res.ok) {
+    logger.warn('prognosis.gyms: non-OK response', { schemeId, httpStatus: res.status });
     throw new PrognosisUpstreamError(`HTTP ${res.status}`);
   }
 
