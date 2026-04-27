@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import apiClient from '../../lib/apiClient';
 import StatCard from '../../components/ui/StatCard';
-import { AdvocateDashboard } from '../../types';
+import type { AdvocateDashboard } from '../../types';
 import { Users, AlertTriangle, RefreshCw, ArrowRight } from 'lucide-react';
 
 export default function AdvocateDashboard() {

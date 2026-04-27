@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import apiClient from '../../lib/apiClient';
 import StatCard from '../../components/ui/StatCard';
-import { ProviderDashboard } from '../../types';
+import type { ProviderDashboard } from '../../types';
 import { CheckSquare, UserCheck, AlertTriangle, RefreshCw } from 'lucide-react';
 
 export default function ProviderDashboard() {
