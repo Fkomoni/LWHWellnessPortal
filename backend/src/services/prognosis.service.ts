@@ -332,13 +332,18 @@ export async function getGymsByScheme(schemeId: string): Promise<PrognosisGym[]>
 
   const rawBody: unknown = await res.json();
 
+  const records = unwrapList(rawBody);
+
   logger.info('prognosis.gyms', {
     schemeId,
     status: res.status,
     bodyKeys: typeof rawBody === 'object' && rawBody !== null ? Object.keys(rawBody as object) : typeof rawBody,
+    recordCount: records.length,
+    firstRecordKeys: records.length > 0 && typeof records[0] === 'object' && records[0] !== null
+      ? Object.keys(records[0] as object)
+      : null,
   });
 
-  const records = unwrapList(rawBody);
   if (records.length === 0) {
     logger.warn('prognosis.gyms: empty list or unrecognised shape', { schemeId });
   }
