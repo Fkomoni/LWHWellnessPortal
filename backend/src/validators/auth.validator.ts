@@ -20,3 +20,20 @@ export const verifyOtpSchema = z.object({
 export const refreshTokenSchema = z.object({
   refreshToken: z.string().min(32).max(256),
 });
+
+// Member ID + DOB primary login (ENROLLEE only)
+export const loginDobSchema = z.object({
+  // Allows the literal '/' Prognosis uses in IDs (e.g. "21000645/0").
+  // The raw string is passed to the Prognosis URL without encoding — Zod
+  // validation here makes that safe.
+  memberRef: z
+    .string()
+    .regex(/^[A-Za-z0-9/\-]+$/, 'Invalid Member ID format')
+    .min(1)
+    .max(50)
+    .transform((s) => s.trim()),
+  dob: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date of birth must be in YYYY-MM-DD format')
+    .transform((s) => new Date(s + 'T00:00:00.000Z')),
+});
