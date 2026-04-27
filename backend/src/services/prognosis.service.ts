@@ -152,7 +152,9 @@ function extractName(obj: Record<string, unknown>) {
 
 function extractSchemeId(obj: Record<string, unknown>): string | null {
   for (const key of [
-    'Member_PlanID',                                                   // confirmed field name
+    'Member_MemberUniqueID',                                           // gym lookup key (confirmed scale ~1000s)
+    'Member_ParentMemberUniqueID',
+    'Member_PlanID',                                                   // plan-level fallback (~100000s, may not match)
     'Member_SchemeID', 'Member_PlanCode', 'Member_SchemeCode', 'Member_SubGroupID',
     'SchemeID', 'PlanID', 'PlanCode', 'SchemeCode', 'SubGroupID', 'GroupCode',
   ]) {
@@ -310,7 +312,7 @@ export async function getGymsByScheme(schemeId: string): Promise<PrognosisGym[]>
 
   const url =
     `${env.PROGNOSIS_API_URL}/api/ListValues/GetGeneralGymandSpaByPlanCode` +
-    `?SchemeID=${encodeURIComponent(schemeId)}&MinimumID=0&NoOfRecords=100&pageSize=0`;
+    `?SchemeID=${encodeURIComponent(schemeId)}&NoOfRecords=100&pageSize=0`;
 
   let res: Response;
   try {
