@@ -1,7 +1,7 @@
 import { db } from '../config/database';
 import { generateSecureOTP, hashOTP, verifyOTPHash } from '../utils/crypto';
 import { env } from '../config/env';
-import { OtpPurpose } from '@prisma/client';
+import { OtpPurpose, OtpGeneratedBy } from '@prisma/client';
 
 export interface OtpResult {
   otp: string;        // raw OTP — send to user, never log
