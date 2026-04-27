@@ -5,8 +5,9 @@ import { signAccessToken, issueRefreshToken, rotateRefreshToken, revokeAllTokens
 import { logAudit } from '../services/audit.service';
 import { validate } from '../middleware/validate';
 import { requireAuth, AuthRequest } from '../middleware/auth';
-import { authRateLimiter, otpGenerateRateLimiter } from '../middleware/rateLimiter';
-import { requestOtpSchema, verifyOtpSchema, refreshTokenSchema } from '../validators/auth.validator';
+import { authRateLimiter, otpGenerateRateLimiter, dobAuthRateLimiter } from '../middleware/rateLimiter';
+import { requestOtpSchema, verifyOtpSchema, refreshTokenSchema, loginDobSchema } from '../validators/auth.validator';
+import { authenticateByDob, PrognosisUpstreamError } from '../services/member.service';
 import { env } from '../config/env';
 import { generateSecureToken } from '../utils/crypto';
 import { Role } from '@prisma/client';
@@ -162,6 +163,77 @@ router.post(
     } catch {
       res.status(401).json({ error: 'Session expired. Please log in again.', code: 'TOKEN_INVALID' });
     }
+  },
+);
+
+// POST /api/auth/login-dob — primary ENROLLEE login via Member ID + date of birth
+router.post(
+  '/login-dob',
+  dobAuthRateLimiter,
+  validate(loginDobSchema),
+  async (req: Request, res: Response): Promise<void> => {
+    const { memberRef, dob } = req.body as { memberRef: string; dob: Date };
+    const ip = req.ip ?? 'unknown';
+    const userAgent = req.headers['user-agent'] ?? '';
+
+    let member: Awaited<ReturnType<typeof authenticateByDob>>;
+    try {
+      member = await authenticateByDob(memberRef, dob);
+    } catch (err) {
+      if (err instanceof PrognosisUpstreamError) {
+        await logAudit({ action: 'AUTH_LOGIN_DOB', resource: 'auth', ipAddress: ip, status: 'FAILURE', details: { reason: 'UPSTREAM_ERROR' } });
+        res.status(503).json({ error: 'Authentication service temporarily unavailable. Please try again.', code: 'UPSTREAM_ERROR' });
+      } else {
+        throw err;
+      }
+      return;
+    }
+
+    if (!member) {
+      await logAudit({
+        action: 'AUTH_LOGIN_DOB',
+        resource: 'auth',
+        ipAddress: ip,
+        userAgent,
+        status: 'FAILURE',
+        details: { reason: 'INVALID_CREDENTIALS' },
+      });
+      res.status(401).json({ error: 'Invalid Member ID or date of birth', code: 'INVALID_CREDENTIALS' });
+      return;
+    }
+
+    const sessionId = generateSecureToken(16);
+    const accessToken = signAccessToken({ sub: member.id, role: member.role, sessionId });
+    const refreshToken = await issueRefreshToken(member.id, ip, userAgent);
+
+    await logAudit({
+      userId: member.id,
+      userRole: member.role,
+      action: 'AUTH_LOGIN_DOB',
+      resource: 'auth',
+      ipAddress: ip,
+      userAgent,
+      status: 'SUCCESS',
+    });
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/api/auth',
+    });
+
+    res.json({
+      accessToken,
+      user: {
+        id: member.id,
+        firstName: member.firstName,
+        lastName: member.lastName,
+        memberRef: member.memberRef,
+        role: member.role,
+      },
+    });
   },
 );
 

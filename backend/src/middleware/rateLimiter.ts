@@ -33,6 +33,23 @@ export const apiRateLimiter = rateLimit({
   },
 });
 
+// DOB login — keyed on IP + memberRef to resist credential-stuffing per member
+export const dobAuthRateLimiter = rateLimit({
+  windowMs,
+  max: parseInt(env.RATE_LIMIT_AUTH_MAX, 10),
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skipSuccessfulRequests: false,
+  message: {
+    error: 'Too many authentication attempts. Please try again in 15 minutes.',
+    code: 'RATE_LIMIT_EXCEEDED',
+  },
+  keyGenerator: (req) => {
+    const memberRef = (req.body as { memberRef?: string }).memberRef ?? '';
+    return `${req.ip}:${memberRef}`;
+  },
+});
+
 // OTP generation — very strict (1 per 60 seconds per IP)
 export const otpGenerateRateLimiter = rateLimit({
   windowMs: 60 * 1000,

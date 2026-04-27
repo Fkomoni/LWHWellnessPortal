@@ -9,7 +9,8 @@ import OTPInput from '../components/ui/OTPInput';
 import { Dumbbell, UserCircle, Shield, ChevronRight, ArrowLeft, Loader2 } from 'lucide-react';
 import apiClient from '../lib/apiClient';
 
-type Step = 'role' | 'phone' | 'otp';
+// ENROLLEE uses Member ID + DOB; Provider/Advocate use phone + OTP.
+type Step = 'role' | 'dob' | 'phone' | 'otp';
 
 const roles: Array<{ value: Role; icon: React.ReactNode; label: string; sub: string; description: string }> = [
   {
@@ -35,15 +36,62 @@ const roles: Array<{ value: Role; icon: React.ReactNode; label: string; sub: str
   },
 ];
 
+const redirectMap: Record<Role, string> = {
+  ENROLLEE: '/member/dashboard',
+  PROVIDER: '/provider/dashboard',
+  ADVOCATE: '/advocate/dashboard',
+};
+
 export default function Login() {
   const navigate = useNavigate();
   const { setAuth } = useAuthStore();
 
   const [step, setStep] = useState<Step>('role');
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+
+  // ENROLLEE fields
+  const [memberRef, setMemberRef] = useState('');
+  const [dob, setDob] = useState('');
+
+  // Provider / Advocate fields
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [devOtp, setDevOtp] = useState<string | null>(null);
+
+  // ── ENROLLEE: Member ID + DOB ─────────────────────────────────────────────
+
+  const loginDobMutation = useMutation({
+    mutationFn: async ({ memberRef, dob }: { memberRef: string; dob: string }) => {
+      const { data } = await apiClient.post('/auth/login-dob', { memberRef, dob });
+      return data as { accessToken: string; user: User };
+    },
+    onSuccess: (data) => {
+      setAuth(data.user, data.accessToken);
+      toast.success(`Welcome back, ${data.user.firstName}!`);
+      navigate(redirectMap[data.user.role]);
+    },
+    onError: (err) => {
+      if (axios.isAxiosError(err)) {
+        const code = err.response?.data?.code as string | undefined;
+        if (code === 'RATE_LIMIT_EXCEEDED') {
+          toast.error('Too many attempts. Please wait 15 minutes.');
+        } else if (code === 'UPSTREAM_ERROR') {
+          toast.error('Authentication service temporarily unavailable. Please try again.');
+        } else {
+          toast.error('Invalid Member ID or date of birth. Please check and try again.');
+        }
+      } else {
+        toast.error('Network error. Please try again.');
+      }
+    },
+  });
+
+  const handleDobLogin = () => {
+    if (!memberRef.trim() || !dob) return;
+    loginDobMutation.mutate({ memberRef: memberRef.trim(), dob });
+  };
+
+  // ── Provider / Advocate: Phone + OTP ─────────────────────────────────────
 
   const requestOtpMutation = useMutation({
     mutationFn: async ({ phone, role }: { phone: string; role: Role }) => {
@@ -78,11 +126,6 @@ export default function Login() {
     onSuccess: (data) => {
       setAuth(data.user, data.accessToken);
       toast.success(`Welcome back, ${data.user.firstName}!`);
-      const redirectMap: Record<Role, string> = {
-        ENROLLEE: '/member/dashboard',
-        PROVIDER: '/provider/dashboard',
-        ADVOCATE: '/advocate/dashboard',
-      };
       navigate(redirectMap[data.user.role]);
     },
     onError: (err) => {
@@ -97,7 +140,7 @@ export default function Login() {
 
   const handleRoleSelect = (role: Role) => {
     setSelectedRole(role);
-    setStep('phone');
+    setStep(role === 'ENROLLEE' ? 'dob' : 'phone');
   };
 
   const handleRequestOtp = () => {
@@ -136,7 +179,7 @@ export default function Login() {
           {roles.map((r) => (
             <button
               key={r.value}
-              onClick={() => { handleRoleSelect(r.value); }}
+              onClick={() => handleRoleSelect(r.value)}
               className={`flex-1 flex flex-col items-center gap-1 py-4 px-3 transition-all duration-150
                 border-b-[3px] cursor-pointer
                 ${selectedRole === r.value && step !== 'role'
@@ -157,6 +200,7 @@ export default function Login() {
       {/* Main content */}
       <div className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-md">
+
           {/* Role selection */}
           {step === 'role' && (
             <div className="animate-fade-in">
@@ -187,7 +231,80 @@ export default function Login() {
             </div>
           )}
 
-          {/* Phone entry */}
+          {/* ── ENROLLEE: Member ID + Date of Birth ── */}
+          {step === 'dob' && selectedRoleMeta && (
+            <div className="animate-fade-in">
+              <button
+                onClick={() => setStep('role')}
+                className="flex items-center gap-1.5 text-white/50 hover:text-white text-sm mb-8 transition-colors"
+              >
+                <ArrowLeft size={14} /> Back
+              </button>
+              <div className="text-center mb-8">
+                <div className="inline-flex p-3 bg-brand-orange/10 rounded-xl text-brand-orange mb-4">
+                  {selectedRoleMeta.icon}
+                </div>
+                <h2 className="text-xl font-bold text-white">Member Login</h2>
+                <p className="text-white/50 text-sm mt-1">Enter your Leadway member details to continue</p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">
+                    Member ID
+                  </label>
+                  <input
+                    type="text"
+                    value={memberRef}
+                    onChange={(e) => setMemberRef(e.target.value)}
+                    placeholder="e.g. 21000645/0"
+                    onKeyDown={(e) => e.key === 'Enter' && handleDobLogin()}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl
+                               text-white placeholder-white/30 text-sm focus:outline-none
+                               focus:border-brand-orange focus:bg-white/10 transition-all font-mono"
+                    autoComplete="username"
+                    maxLength={50}
+                    spellCheck={false}
+                  />
+                  <p className="text-white/30 text-xs mt-1.5">Found on your Leadway Health insurance card</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">
+                    Date of Birth
+                  </label>
+                  <input
+                    type="date"
+                    value={dob}
+                    onChange={(e) => setDob(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleDobLogin()}
+                    max={new Date().toISOString().split('T')[0]}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl
+                               text-white text-sm focus:outline-none
+                               focus:border-brand-orange focus:bg-white/10 transition-all
+                               [color-scheme:dark]"
+                    autoComplete="bday"
+                  />
+                </div>
+
+                <button
+                  onClick={handleDobLogin}
+                  disabled={loginDobMutation.isPending || !memberRef.trim() || !dob}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-brand-red
+                             text-white font-semibold rounded-xl hover:bg-red-700 transition-colors
+                             disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                >
+                  {loginDobMutation.isPending ? (
+                    <><Loader2 size={16} className="animate-spin" /> Signing in...</>
+                  ) : (
+                    'Sign In'
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Provider / Advocate: Phone entry ── */}
           {step === 'phone' && selectedRoleMeta && (
             <div className="animate-fade-in">
               <button onClick={() => setStep('role')} className="flex items-center gap-1.5 text-white/50 hover:text-white text-sm mb-8 transition-colors">
@@ -237,10 +354,13 @@ export default function Login() {
             </div>
           )}
 
-          {/* OTP verification */}
+          {/* ── OTP verification (Provider / Advocate) ── */}
           {step === 'otp' && selectedRoleMeta && (
             <div className="animate-fade-in">
-              <button onClick={() => { setStep('phone'); setOtp(''); setDevOtp(null); }} className="flex items-center gap-1.5 text-white/50 hover:text-white text-sm mb-8 transition-colors">
+              <button
+                onClick={() => { setStep('phone'); setOtp(''); setDevOtp(null); }}
+                className="flex items-center gap-1.5 text-white/50 hover:text-white text-sm mb-8 transition-colors"
+              >
                 <ArrowLeft size={14} /> Change number
               </button>
               <div className="text-center mb-8">
@@ -284,7 +404,7 @@ export default function Login() {
       </div>
 
       <footer className="text-center py-4 text-white/20 text-xs">
-        &copy; {new Date().getFullYear()} Leadway Health. All rights reserved. &nbsp;|&nbsp; Secured with OTP authentication
+        &copy; {new Date().getFullYear()} Leadway Health. All rights reserved. &nbsp;|&nbsp; Secured with multi-factor authentication
       </footer>
     </div>
   );
