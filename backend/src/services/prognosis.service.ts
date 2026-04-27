@@ -261,6 +261,8 @@ export type PrognosisGym = {
   lga: string;
   address: string;
   phone: string | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 // Unwraps list envelopes: data/result/Data/Result arrays, or top-level arrays.
@@ -288,17 +290,20 @@ function extractGym(raw: unknown): PrognosisGym | null {
     }
     return '';
   };
+  const numOrNull = (k: string) => typeof obj[k] === 'number' ? obj[k] as number : null;
 
-  const gymName = str(['GymName', 'FacilityName', 'ProviderName', 'GymandSpaName', 'Name', 'HospName']);
-  if (!gymName) return null; // skip records with no name
+  const gymName = str(['provider', 'GymName', 'FacilityName', 'ProviderName', 'GymandSpaName', 'Name', 'HospName']);
+  if (!gymName) return null;
 
   return {
-    gymCode: str(['GymCode', 'FacilityCode', 'ProviderCode', 'Code', 'HospCode', 'ID']),
+    gymCode: str(['ProviderCode', 'GymCode', 'FacilityCode', 'Code', 'HospCode', 'ID']),
     gymName,
-    state: str(['State', 'StateName', 'StateCode']),
-    lga: str(['LGA', 'LocalGovernment', 'LocalGovtArea', 'Town', 'Area', 'City', 'District']),
-    address: str(['Address', 'FullAddress', 'GymAddress', 'Location', 'Street', 'AddressLine1']),
-    phone: str(['Phone', 'PhoneNo', 'Telephone', 'ContactPhone']) || null,
+    state: str(['StateOfOrigin', 'State', 'StateName', 'StateCode']),
+    lga: str(['CityOfOrigin', 'region', 'LGA', 'LocalGovernment', 'LocalGovtArea', 'Town', 'City', 'District']),
+    address: str(['ProviderAddress', 'Address', 'FullAddress', 'GymAddress', 'Location', 'Street', 'AddressLine1']),
+    phone: str(['phone1', 'phone2', 'Phone', 'PhoneNo', 'Telephone', 'ContactPhone']) || null,
+    latitude: numOrNull('latitude'),
+    longitude: numOrNull('longitude'),
   };
 }
 
