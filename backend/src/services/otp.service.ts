@@ -75,7 +75,7 @@ export async function verifyAuthOTP(phone: string, otp: string): Promise<OtpVeri
 export async function verifySessionOTP(
   otpCode: string,
   providedByProvider: boolean,
-): Promise<{ valid: boolean; otpId?: string; memberId?: string; generatedBy?: string; reason?: string }> {
+): Promise<{ valid: boolean; otpId?: string; memberId?: string; generatedBy?: OtpGeneratedBy; reason?: string }> {
   const maxAttempts = parseInt(env.OTP_MAX_ATTEMPTS, 10);
 
   const record = await db.otpRecord.findFirst({
