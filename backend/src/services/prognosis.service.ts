@@ -290,10 +290,35 @@ function extractGym(raw: unknown): PrognosisGym | null {
     }
     return '';
   };
-  const numOrNull = (k: string) => typeof obj[k] === 'number' ? obj[k] as number : null;
+  const numOrNull = (k: string): number | null => {
+    const v = obj[k];
+    if (typeof v === 'number' && v !== 0) return v;
+    if (typeof v === 'string' && v.trim()) {
+      const n = parseFloat(v.trim());
+      if (!isNaN(n) && n !== 0) return n;
+    }
+    return null;
+  };
+
+  // gps_location fallback — may be "lat,lng" string when lat/lng fields are 0/null
+  const parseGpsLocation = (): [number | null, number | null] => {
+    const raw = obj['gps_location'];
+    if (typeof raw !== 'string' || !raw.trim()) return [null, null];
+    const parts = raw.trim().split(/[,\s]+/);
+    if (parts.length < 2) return [null, null];
+    const lat = parseFloat(parts[0]);
+    const lng = parseFloat(parts[1]);
+    return (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) ? [lat, lng] : [null, null];
+  };
 
   const gymName = str(['provider', 'GymName', 'FacilityName', 'ProviderName', 'GymandSpaName', 'Name', 'HospName']);
   if (!gymName) return null;
+
+  let latitude = numOrNull('latitude');
+  let longitude = numOrNull('longitude');
+  if (latitude === null || longitude === null) {
+    [latitude, longitude] = parseGpsLocation();
+  }
 
   return {
     gymCode: str(['ProviderCode', 'GymCode', 'FacilityCode', 'Code', 'HospCode', 'ID']),
@@ -302,8 +327,8 @@ function extractGym(raw: unknown): PrognosisGym | null {
     lga: str(['CityOfOrigin', 'region', 'LGA', 'LocalGovernment', 'LocalGovtArea', 'Town', 'City', 'District']),
     address: str(['ProviderAddress', 'Address', 'FullAddress', 'GymAddress', 'Location', 'Street', 'AddressLine1']),
     phone: str(['phone1', 'phone2', 'Phone', 'PhoneNo', 'Telephone', 'ContactPhone']) || null,
-    latitude: numOrNull('latitude'),
-    longitude: numOrNull('longitude'),
+    latitude,
+    longitude,
   };
 }
 
