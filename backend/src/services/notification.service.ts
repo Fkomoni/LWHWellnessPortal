@@ -192,7 +192,7 @@ export async function createInAppNotification(
       title,
       body,
       channel: NotificationChannel.IN_APP,
-      metadata: metadata ?? {},
+      metadata: (metadata ?? {}) as Prisma.InputJsonValue,
     },
   });
 }

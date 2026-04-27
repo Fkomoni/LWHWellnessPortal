@@ -75,7 +75,7 @@ export async function verifyAuthOTP(phone: string, otp: string): Promise<OtpVeri
 export async function verifySessionOTP(
   otpCode: string,
   providedByProvider: boolean,
-): Promise<{ valid: boolean; otpId?: string; memberId?: string; reason?: string }> {
+): Promise<{ valid: boolean; otpId?: string; memberId?: string; generatedBy?: string; reason?: string }> {
   const maxAttempts = parseInt(env.OTP_MAX_ATTEMPTS, 10);
 
   const record = await db.otpRecord.findFirst({
@@ -97,5 +97,5 @@ export async function verifySessionOTP(
 
   await db.otpRecord.update({ where: { id: record.id }, data: { usedAt: new Date() } });
 
-  return { valid: true, otpId: record.id, memberId: record.memberId ?? undefined };
+  return { valid: true, otpId: record.id, memberId: record.memberId ?? undefined, generatedBy: record.generatedBy };
 }
