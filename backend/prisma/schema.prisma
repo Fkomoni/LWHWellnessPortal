@@ -87,6 +87,7 @@ model Member {
   resetDate        DateTime?
   spouseId         String?
   planType         String    @default("STANDARD") // STANDARD | PREMIUM
+  schemeId         String?   // Prognosis SchemeID — cached on login for gym lookup
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
