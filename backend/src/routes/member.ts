@@ -8,6 +8,7 @@ import { generateSessionOTP } from '../services/otp.service';
 import { logAudit } from '../services/audit.service';
 import { createInAppNotification } from '../services/notification.service';
 import { initializePayment, verifyPayment, getAllPlans } from '../services/payment.service';
+import { getGymsByScheme, PrognosisUpstreamError } from '../services/prognosis.service';
 import { generateSessionOtpSchema, rateGymSchema, paginationSchema } from '../validators/member.validator';
 import { z } from 'zod';
 import { Role } from '@prisma/client';
@@ -142,8 +143,27 @@ router.post('/rate-gym', validate(rateGymSchema), async (req: AuthRequest, res: 
   res.json({ message: 'Rating submitted. Thank you!' });
 });
 
-// GET /api/member/gyms — gym finder
-router.get('/gyms', async (_req: AuthRequest, res: Response): Promise<void> => {
+// GET /api/member/gyms — gym finder (Prognosis live data, local-DB fallback)
+router.get('/gyms', async (req: AuthRequest, res: Response): Promise<void> => {
+  const memberId = req.user!.sub;
+
+  const member = await db.member.findUnique({
+    where: { id: memberId },
+    select: { schemeId: true },
+  });
+
+  if (member?.schemeId) {
+    try {
+      const prognosisGyms = await getGymsByScheme(member.schemeId);
+      res.json({ gyms: prognosisGyms, source: 'prognosis' });
+      return;
+    } catch (err) {
+      if (!(err instanceof PrognosisUpstreamError)) throw err;
+      // Prognosis is down — fall through to local DB
+    }
+  }
+
+  // Fallback: return locally seeded providers
   const gyms = await db.provider.findMany({
     where: { status: 'ACTIVE' },
     select: {
@@ -152,7 +172,7 @@ router.get('/gyms', async (_req: AuthRequest, res: Response): Promise<void> => {
     },
     orderBy: { gymName: 'asc' },
   });
-  res.json({ gyms });
+  res.json({ gyms, source: 'local' });
 });
 
 // GET /api/member/notifications

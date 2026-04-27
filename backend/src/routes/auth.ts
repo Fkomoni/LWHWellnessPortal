@@ -206,6 +206,11 @@ router.post(
     const accessToken = signAccessToken({ sub: member.id, role: member.role, sessionId });
     const refreshToken = await issueRefreshToken(member.id, ip, userAgent);
 
+    // Cache schemeId for gym lookups — fire-and-forget, never block the login response
+    if (member.schemeId) {
+      db.member.update({ where: { id: member.id }, data: { schemeId: member.schemeId } }).catch(() => {});
+    }
+
     await logAudit({
       userId: member.id,
       userRole: member.role,
