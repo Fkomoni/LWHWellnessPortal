@@ -1,6 +1,13 @@
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
+export class PrognosisUpstreamError extends Error {
+  constructor(public readonly cause: string) {
+    super(`Prognosis upstream error: ${cause}`);
+    this.name = 'PrognosisUpstreamError';
+  }
+}
+
 // Prognosis requires this exact User-Agent — blank/default UAs are rejected.
 const COMMON_HEADERS = {
   'Content-Type': 'application/json',
@@ -53,12 +60,12 @@ async function fetchFreshToken(): Promise<string> {
   });
 
   if (!res.ok) {
-    throw new Error(`Prognosis auth failed: HTTP ${res.status}`);
+    throw new PrognosisUpstreamError(`auth HTTP ${res.status}`);
   }
 
   const body: unknown = await res.json();
   const token = extractToken(body);
-  if (!token) throw new Error('Prognosis auth: token not found in response envelope');
+  if (!token) throw new PrognosisUpstreamError('token not found in auth response envelope');
   return token;
 }
 
@@ -89,13 +96,6 @@ export type EnrolleeBioData = {
   dateOfBirth: string | null; // YYYY-MM-DD, normalised
   phone: string | null;
 };
-
-export class PrognosisUpstreamError extends Error {
-  constructor(public readonly cause: string) {
-    super(`Prognosis upstream error: ${cause}`);
-    this.name = 'PrognosisUpstreamError';
-  }
-}
 
 // Handles top-level, data/result/Data wrappers, and array envelopes.
 function unwrapBody(body: unknown): Record<string, unknown> | null {
@@ -173,7 +173,13 @@ function extractPhone(obj: Record<string, unknown>): string | null {
  * Returns null when the response body is empty (member not in Prognosis).
  */
 export async function getEnrolleeBioData(enrolleeId: string): Promise<EnrolleeBioData | null> {
-  const token = await getPrognosisToken();
+  let token: string;
+  try {
+    token = await getPrognosisToken();
+  } catch (err) {
+    if (err instanceof PrognosisUpstreamError) throw err;
+    throw new PrognosisUpstreamError(String(err));
+  }
 
   // Build URL by hand — do NOT use URLSearchParams; it encodes '/' to '%2F'.
   const url = `${env.PROGNOSIS_API_URL}/api/EnrolleeProfile/GetEnrolleeBioDataByEnrolleeID?enrolleeid=${enrolleeId}`;
