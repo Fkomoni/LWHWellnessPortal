@@ -154,6 +154,6 @@ services:
 databases:
   - name: lwh-wellness-db
     region: oregon
-    plan: free
+    plan: basic-256mb
     databaseName: lwh_wellness
     user: lwh_user
