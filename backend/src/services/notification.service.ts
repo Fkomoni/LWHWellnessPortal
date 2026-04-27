@@ -1,7 +1,7 @@
+import { Prisma, NotificationChannel } from '@prisma/client';
 import { env } from '../config/env';
 import { db } from '../config/database';
 import { logger } from '../utils/logger';
-import { NotificationChannel } from '@prisma/client';
 import { getPrognosisToken, invalidatePrognosisToken, PROGNOSIS_HEADERS } from './prognosis.service';
 
 // ─── WhatsApp ─────────────────────────────────────────────────────────────
@@ -49,7 +49,7 @@ export async function sendSessionConfirmationWhatsApp(
 
   await db.session.update({
     where: { id: sessionId },
-    data: { whatsappSentAt: sent ? new Date() : undefined },
+    data: { ...(sent && { whatsappSentAt: new Date() }) },
   });
 }
 
@@ -154,7 +154,7 @@ async function logCommunication(params: EmailParams & { senderName: string; send
       subject: params.subject,
       body: params.body,
       emailType: params.emailType,
-      metadata: params.metadata ?? {},
+      metadata: (params.metadata ?? {}) as Prisma.InputJsonValue,
     },
   });
 }

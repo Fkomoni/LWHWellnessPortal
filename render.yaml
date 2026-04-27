@@ -23,7 +23,7 @@ services:
     plan: free
     rootDir: backend
     # prisma generate must run before tsc so client types are available
-    buildCommand: npm install && npm run db:generate && npm run build && npm run db:migrate
+    buildCommand: npm install --include=dev && npm run db:generate && npm run build && npm run db:migrate
     startCommand: node dist/server.js
     healthCheckPath: /api/health
     envVars:

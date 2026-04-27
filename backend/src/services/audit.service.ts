@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { db } from '../config/database';
 import { auditEvent } from '../utils/logger';
 import { sanitizeForLog } from '../utils/crypto';
@@ -28,7 +29,7 @@ export async function logAudit(params: AuditParams): Promise<void> {
       ipAddress: params.ipAddress,
       userAgent: params.userAgent,
       status: params.status,
-      details: sanitisedDetails ?? {},
+      details: (sanitisedDetails ?? {}) as Prisma.InputJsonValue,
     },
   }).catch(() => {
     // DB write failure must not break the main flow — log to stdout instead
