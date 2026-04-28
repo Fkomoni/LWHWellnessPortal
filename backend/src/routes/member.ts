@@ -210,7 +210,7 @@ router.post(
     });
 
     await db.session.create({
-      data: { memberId, providerId: gym.id, sessionOtpId: otpRecord.id, generatedBy: OtpGeneratedBy.MEMBER, status: 'PENDING', otpCode: prognosisResult.otp },
+      data: { memberId, providerId: gym.id, sessionOtpId: otpRecord.id, generatedBy: OtpGeneratedBy.MEMBER, status: 'PENDING', otpCode: prognosisResult.otp, otpExpiresAt: expiresAt },
     });
 
     await logAudit({
@@ -248,6 +248,57 @@ router.get('/sessions', validateQuery(paginationSchema), async (req: AuthRequest
   ]);
 
   res.json({ sessions, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+});
+
+// DELETE /api/member/sessions/:id — cancel a pending session + void its OTP
+router.delete('/sessions/:id', async (req: AuthRequest, res: Response): Promise<void> => {
+  const memberId = req.user!.sub;
+  const session = await db.session.findUnique({
+    where: { id: req.params['id'], memberId },
+    select: { id: true, status: true, sessionOtpId: true },
+  });
+  if (!session) { res.status(404).json({ error: 'Session not found', code: 'NOT_FOUND' }); return; }
+  if (session.status !== 'PENDING') {
+    res.status(409).json({ error: 'Only pending sessions can be cancelled', code: 'INVALID_STATUS' });
+    return;
+  }
+  // Check OTP not already used
+  const otp = await db.otpRecord.findUnique({ where: { id: session.sessionOtpId }, select: { usedAt: true } });
+  if (otp?.usedAt) {
+    res.status(409).json({ error: 'OTP has already been used', code: 'OTP_USED' });
+    return;
+  }
+  await db.$transaction([
+    db.session.update({ where: { id: session.id }, data: { status: 'CANCELLED', otpCode: null } }),
+    db.otpRecord.update({ where: { id: session.sessionOtpId }, data: { usedAt: new Date() } }),
+  ]);
+  res.json({ ok: true, message: 'Session cancelled and OTP voided.' });
+});
+
+// POST /api/member/sessions/:id/extend-otp — extend OTP expiry by 2 hours
+router.post('/sessions/:id/extend-otp', async (req: AuthRequest, res: Response): Promise<void> => {
+  const memberId = req.user!.sub;
+  const session = await db.session.findUnique({
+    where: { id: req.params['id'], memberId },
+    select: { id: true, status: true, sessionOtpId: true, otpExpiresAt: true },
+  });
+  if (!session) { res.status(404).json({ error: 'Session not found', code: 'NOT_FOUND' }); return; }
+  if (session.status !== 'PENDING') {
+    res.status(409).json({ error: 'Only pending sessions can have their OTP extended', code: 'INVALID_STATUS' });
+    return;
+  }
+  const otp = await db.otpRecord.findUnique({ where: { id: session.sessionOtpId }, select: { usedAt: true, expiresAt: true } });
+  if (otp?.usedAt) {
+    res.status(409).json({ error: 'OTP has already been used', code: 'OTP_USED' });
+    return;
+  }
+  // Extend from now (not from original expiry) so repeated extends always give a full 2 hours
+  const newExpiry = new Date(Date.now() + 2 * 60 * 60 * 1000);
+  await db.$transaction([
+    db.session.update({ where: { id: session.id }, data: { otpExpiresAt: newExpiry } }),
+    db.otpRecord.update({ where: { id: session.sessionOtpId }, data: { expiresAt: newExpiry } }),
+  ]);
+  res.json({ ok: true, otpExpiresAt: newExpiry.toISOString(), message: 'OTP extended by 2 hours.' });
 });
 
 // POST /api/member/rate-gym

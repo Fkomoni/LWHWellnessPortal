@@ -141,6 +141,7 @@ model Session {
   sessionOtpId    String
   generatedBy     OtpGeneratedBy @default(MEMBER)
   otpCode         String?        // raw OTP shown to member; cleared on CONFIRMED
+  otpExpiresAt    DateTime?      // mirrors OtpRecord.expiresAt; updated on extend
   status          SessionStatus  @default(PENDING)
   whatsappVerified Boolean       @default(false)
   whatsappSentAt  DateTime?

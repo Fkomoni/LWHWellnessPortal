@@ -48,7 +48,8 @@ export interface Session {
   sessionDate: string;
   provider: { gymName: string; location: string };
   rating?: { rating: number } | null;
-  otpCode?: string; // shown in recent activity
+  otpCode?: string | null;
+  otpExpiresAt?: string | null;
 }
 
 export interface Gym {
