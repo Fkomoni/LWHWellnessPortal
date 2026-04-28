@@ -163,7 +163,7 @@ export async function getWellnessBenefit(memberRef: string): Promise<WellnessBen
     sessionsUsed: num(['sessionsUsed', 'SessionsUsed', 'sessions_used', 'UsedSessions']),
     sessionsRemaining: num(['sessionsRemaining', 'SessionsRemaining', 'sessions_remaining', 'RemainingSession']),
     resetDate,
-    status: str(['status', 'Status', 'BenefitStatus', 'MemberStatus']) || 'ACTIVE',
+    status: (str(['status', 'Status', 'BenefitStatus', 'MemberStatus']) || 'ACTIVE').toUpperCase(),
   };
 }
 
