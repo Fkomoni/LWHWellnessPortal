@@ -649,9 +649,6 @@ export async function generatePrognosisSessionOtp(
     throw new PrognosisUpstreamError(`HTTP ${res.status}`);
   }
 
-  // Log full response so we can see exact shape and field names from Prognosis
-  logger.info('prognosis.otp.body', { memberRef, providerCode, body: rawBody });
-
   const record = unwrapBody(rawBody);
   if (!record) {
     logger.error('prognosis.otp.error', { memberRef, providerCode, httpStatus: res.status, body: rawBody, reason: 'unexpected shape' });
@@ -666,9 +663,9 @@ export async function generatePrognosisSessionOtp(
     return '';
   };
 
-  const otp = str(['otp', 'OTP', 'Otp', 'otpCode', 'OtpCode', 'OTPCode']);
+  const otp = str(['sessionId', 'SessionId', 'otp', 'OTP', 'Otp', 'otpCode', 'OtpCode', 'OTPCode']);
   if (!otp) {
-    logger.error('prognosis.otp.error', { memberRef, providerCode, reason: 'OTP field missing', recordKeys: Object.keys(record), record });
+    logger.error('prognosis.otp.error', { memberRef, providerCode, reason: 'OTP field missing', recordKeys: Object.keys(record) });
     throw new PrognosisUpstreamError('OTP field missing in response');
   }
 
