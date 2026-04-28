@@ -109,9 +109,9 @@ model Provider {
   id          String         @id @default(cuid())
   gymCode     String         @unique
   gymName     String
-  phone       String         @unique
-  email       String         @unique
-  location    String
+  phone       String?        @unique
+  email       String?        @unique
+  location    String?
   address     String?
   lga         String
   state       String         @default("Lagos")

@@ -1,5 +1,6 @@
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
+import { db } from '../config/database';
 
 export class PrognosisUpstreamError extends Error {
   constructor(public readonly cause: string) {
@@ -519,6 +520,54 @@ export async function getGymsByScheme(schemeId: string): Promise<PrognosisGym[]>
     .map(extractGym)
     .filter((g): g is PrognosisGym => g !== null)
     .filter((g) => !INACTIVE_GYM_PATTERN.test(g.gymName));
+}
+
+/**
+ * Upserts all Prognosis gyms into the local Provider table so the DB stays
+ * in sync with the plan's gym list. Runs fire-and-forget — never blocks callers.
+ * Uses gymCode as the unique key; phone/email left null for Prognosis-synced gyms.
+ */
+export function syncGymsToDb(gyms: PrognosisGym[]): void {
+  if (gyms.length === 0) return;
+
+  const run = async () => {
+    let upserted = 0;
+    for (const gym of gyms) {
+      if (!gym.gymCode) continue;
+      try {
+        await db.provider.upsert({
+          where: { gymCode: gym.gymCode },
+          create: {
+            gymCode: gym.gymCode,
+            gymName: gym.gymName,
+            phone: gym.phone || null,
+            location: gym.address || gym.lga || gym.gymName,
+            address: gym.address || null,
+            lga: gym.lga,
+            state: gym.state || 'Lagos',
+            latitude: gym.latitude ?? null,
+            longitude: gym.longitude ?? null,
+          },
+          update: {
+            gymName: gym.gymName,
+            phone: gym.phone || undefined,
+            location: gym.address || gym.lga || gym.gymName,
+            address: gym.address || undefined,
+            lga: gym.lga,
+            state: gym.state || undefined,
+            latitude: gym.latitude ?? undefined,
+            longitude: gym.longitude ?? undefined,
+          },
+        });
+        upserted++;
+      } catch {
+        // Skip individual failures (e.g. phone unique conflict) — don't abort the batch
+      }
+    }
+    logger.info('prognosis.gyms.sync', { total: gyms.length, upserted });
+  };
+
+  run().catch(() => {});
 }
 
 // ─── Session OTP generation ───────────────────────────────────────────────────
