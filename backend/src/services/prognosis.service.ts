@@ -602,6 +602,8 @@ export async function generatePrognosisSessionOtp(
     throw new PrognosisUpstreamError(String(err));
   }
 
+  logger.info('prognosis.otp.attempt', { memberRef, providerCode });
+
   let res: Response;
   try {
     res = await fetch(`${env.PROGNOSIS_API_URL}/api/WellnessBenefit/GenerateSessionOtp`, {
@@ -613,12 +615,21 @@ export async function generatePrognosisSessionOtp(
     throw new PrognosisUpstreamError(`network error: ${String(err)}`);
   }
 
+  logger.info('prognosis.otp.http', { memberRef, providerCode, httpStatus: res.status });
+
   if (res.status === 401) {
     invalidatePrognosisToken();
     throw new PrognosisUpstreamError('token rejected (401)');
   }
 
-  const rawBody: unknown = await res.json();
+  let rawBody: unknown;
+  try {
+    rawBody = await res.json();
+  } catch {
+    const text = await res.text().catch(() => '(unreadable)');
+    logger.error('prognosis.otp.error', { memberRef, providerCode, httpStatus: res.status, reason: 'non-JSON response', body: text.slice(0, 500) });
+    throw new PrognosisUpstreamError(`HTTP ${res.status} non-JSON`);
+  }
 
   // Detect benefit-exhausted failure before checking res.ok
   if (typeof rawBody === 'object' && rawBody !== null) {
