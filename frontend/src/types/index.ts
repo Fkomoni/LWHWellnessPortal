@@ -48,9 +48,20 @@ export interface Session {
 }
 
 export interface Gym {
-  id: string;
+  // local DB
+  id?: string;
+  location?: string;
+  amenities?: string[];
+  hours?: Record<string, string> | null;
+  // Prognosis
+  gymCode?: string;
+  address?: string;
+  state?: string;
+  phone?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  // common
   gymName: string;
-  location: string;
   lga: string;
 }
 

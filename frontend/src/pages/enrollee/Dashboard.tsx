@@ -3,8 +3,13 @@ import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import apiClient from '../../lib/apiClient';
 import StatCard from '../../components/ui/StatCard';
-import { MemberDashboard, Session } from '../../types';
+import { MemberDashboard, Session, Gym } from '../../types';
 import { QrCode, Star, CheckCircle2, Clock, AlertTriangle, MapPin, RefreshCw } from 'lucide-react';
+import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
+import { useState, useCallback, useRef } from 'react';
+
+const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+const LAGOS = { lat: 6.5244, lng: 3.3792 };
 import toast from 'react-hot-toast';
 
 function SessionBubble({ session, index }: { session: Session; index: number }) {
@@ -30,6 +35,11 @@ function statusBadge(session: Session) {
 export default function EnrolleeDashboard() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
+  const [activeGym, setActiveGym] = useState<Gym | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const onMapLoad = useCallback((map: google.maps.Map) => { mapRef.current = map; }, []);
+
+  const { isLoaded: mapsLoaded } = useJsApiLoader({ googleMapsApiKey: MAPS_API_KEY ?? '' });
 
   const { data, isLoading, error } = useQuery<MemberDashboard>({
     queryKey: ['member-dashboard'],
@@ -96,9 +106,9 @@ export default function EnrolleeDashboard() {
           />
         )}
         <StatCard
-          label="Gyms Near You"
+          label="Covered Gyms"
           value={nearbyGyms.length}
-          sub="Lagos network"
+          sub="on your plan"
           color="green"
           icon={<MapPin size={18} />}
         />
@@ -195,19 +205,66 @@ export default function EnrolleeDashboard() {
 
       {/* Nearby gyms */}
       <div className="card">
-        <h2 className="font-bold text-grey-5 mb-4">Gyms Near You</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-bold text-grey-5">Covered Gyms</h2>
+          <Link to="/member/gyms" className="text-xs text-brand-red hover:underline">View all</Link>
+        </div>
+
+        {/* Mini map */}
+        {MAPS_API_KEY && mapsLoaded ? (
+          <div className="w-full h-48 rounded-xl overflow-hidden border border-grey-3 mb-4">
+            <GoogleMap
+              mapContainerStyle={{ width: '100%', height: '100%' }}
+              center={LAGOS}
+              zoom={10}
+              onLoad={onMapLoad}
+              options={{ streetViewControl: false, mapTypeControl: false, fullscreenControl: false, zoomControl: false }}
+            >
+              {nearbyGyms
+                .filter((g) => typeof g.latitude === 'number' && typeof g.longitude === 'number')
+                .map((gym) => (
+                  <Marker
+                    key={gym.gymCode ?? gym.id ?? gym.gymName}
+                    position={{ lat: gym.latitude as number, lng: gym.longitude as number }}
+                    onClick={() => {
+                      setActiveGym(gym);
+                      mapRef.current?.panTo({ lat: gym.latitude as number, lng: gym.longitude as number });
+                      mapRef.current?.setZoom(14);
+                    }}
+                    title={gym.gymName}
+                  />
+                ))}
+            </GoogleMap>
+          </div>
+        ) : null}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {nearbyGyms.slice(0, 6).map((gym) => (
-            <div key={gym.id} className="flex items-start gap-3 p-3 bg-grey-1 rounded-lg">
-              <div className="p-1.5 bg-brand-red/10 rounded text-brand-red flex-shrink-0">
-                <MapPin size={14} />
+          {nearbyGyms.slice(0, 6).map((gym) => {
+            const key = gym.gymCode ?? gym.id ?? gym.gymName;
+            const isActive = activeGym?.gymCode === gym.gymCode && activeGym?.id === gym.id;
+            return (
+              <div
+                key={key}
+                onClick={() => {
+                  setActiveGym(gym);
+                  if (typeof gym.latitude === 'number' && typeof gym.longitude === 'number') {
+                    mapRef.current?.panTo({ lat: gym.latitude, lng: gym.longitude });
+                    mapRef.current?.setZoom(14);
+                  }
+                }}
+                className={`flex items-start gap-3 p-3 bg-grey-1 rounded-lg cursor-pointer transition-colors ${isActive ? 'ring-2 ring-brand-red bg-red-50' : 'hover:bg-grey-2'}`}
+              >
+                <div className="p-1.5 bg-brand-red/10 rounded text-brand-red flex-shrink-0">
+                  <MapPin size={14} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-grey-5 truncate">{gym.gymName}</div>
+                  <div className="text-xs text-grey-4 mt-0.5 truncate">{gym.address ?? gym.location ?? ''}</div>
+                  {gym.lga && <div className="text-xs text-grey-3">{gym.lga}{gym.state ? ` · ${gym.state}` : ''}</div>}
+                </div>
               </div>
-              <div>
-                <div className="text-sm font-semibold text-grey-5">{gym.gymName}</div>
-                <div className="text-xs text-grey-4 mt-0.5">{gym.location}</div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

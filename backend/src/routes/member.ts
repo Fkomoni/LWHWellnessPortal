@@ -27,7 +27,7 @@ router.get('/dashboard', async (req: AuthRequest, res: Response): Promise<void> 
     select: {
       id: true, firstName: true, lastName: true, memberRef: true,
       sessionsPerMonth: true, sessionsUsed: true, resetDate: true,
-      spouseId: true, email: true, planType: true,
+      spouseId: true, email: true, planType: true, schemeId: true,
     },
   });
 
@@ -48,11 +48,23 @@ router.get('/dashboard', async (req: AuthRequest, res: Response): Promise<void> 
     include: { provider: { select: { gymName: true, location: true } } },
   });
 
-  const nearbyGyms = await db.provider.findMany({
-    where: { status: 'ACTIVE' },
-    select: { id: true, gymName: true, location: true, lga: true, latitude: true, longitude: true, amenities: true, hours: true },
-    take: 20,
-  });
+  // Try Prognosis gyms first; fall back to local DB
+  let nearbyGyms: unknown[] = [];
+  if (member.schemeId) {
+    try {
+      nearbyGyms = await getGymsByScheme(member.schemeId);
+    } catch (err) {
+      if (!(err instanceof PrognosisUpstreamError)) throw err;
+      logger.warn('dashboard: Prognosis gym fetch failed, using local DB', { cause: (err as PrognosisUpstreamError).cause });
+    }
+  }
+  if (nearbyGyms.length === 0) {
+    nearbyGyms = await db.provider.findMany({
+      where: { status: 'ACTIVE' },
+      select: { id: true, gymName: true, location: true, lga: true, latitude: true, longitude: true, amenities: true, hours: true },
+      take: 20,
+    });
+  }
 
   const unreadCount = await db.notification.count({ where: { memberId, readAt: null } });
 
