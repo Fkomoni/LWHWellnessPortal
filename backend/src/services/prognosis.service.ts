@@ -586,6 +586,8 @@ export async function authenticateProvider(
   email: string,
   password: string,
 ): Promise<PrognosisProviderAuth | null> {
+  logger.info('prognosis.provider.login.attempt', { email });
+
   let res: Response;
   try {
     res = await fetch(`${env.PROGNOSIS_API_URL}/api/ApiUsers/ProviderLogin`, {
@@ -597,15 +599,24 @@ export async function authenticateProvider(
     throw new PrognosisUpstreamError(`network error: ${String(err)}`);
   }
 
+  logger.info('prognosis.provider.login.http', { email, httpStatus: res.status });
+
   // 400/401 = wrong credentials
   if (res.status === 400 || res.status === 401) return null;
-  if (!res.ok) throw new PrognosisUpstreamError(`HTTP ${res.status}`);
 
   let rawBody: unknown;
   try {
     rawBody = await res.json();
   } catch {
+    const text = await res.text().catch(() => '(unreadable)');
+    logger.error('prognosis.provider.login.error', { email, httpStatus: res.status, reason: 'non-JSON', body: text.slice(0, 500) });
     throw new PrognosisUpstreamError('non-JSON response from provider login');
+  }
+
+  logger.info('prognosis.provider.login.body', { email, httpStatus: res.status, body: rawBody });
+
+  if (!res.ok) {
+    throw new PrognosisUpstreamError(`HTTP ${res.status}`);
   }
 
   const record = unwrapBody(rawBody);
