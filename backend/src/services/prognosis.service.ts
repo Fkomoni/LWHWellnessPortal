@@ -590,7 +590,7 @@ export async function authenticateProvider(
 
   let res: Response;
   try {
-    res = await fetch(`${env.PROGNOSIS_API_URL}/api/ApiUsers/ProviderLogin`, {
+    res = await fetch(`${env.PROGNOSIS_API_URL}/api/WellnessBenefit/WellnessProviderLogIn`, {
       method: 'POST',
       headers: COMMON_HEADERS,
       body: JSON.stringify({ Username: email, Password: password }),
