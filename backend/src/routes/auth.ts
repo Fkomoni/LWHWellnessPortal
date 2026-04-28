@@ -6,8 +6,9 @@ import { logAudit } from '../services/audit.service';
 import { validate } from '../middleware/validate';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { authRateLimiter, otpGenerateRateLimiter, dobAuthRateLimiter } from '../middleware/rateLimiter';
-import { requestOtpSchema, verifyOtpSchema, refreshTokenSchema, loginDobSchema } from '../validators/auth.validator';
+import { requestOtpSchema, verifyOtpSchema, refreshTokenSchema, loginDobSchema, providerLoginSchema } from '../validators/auth.validator';
 import { authenticateByDob, PrognosisUpstreamError } from '../services/member.service';
+import { authenticateProvider } from '../services/prognosis.service';
 import { env } from '../config/env';
 import { generateSecureToken } from '../utils/crypto';
 import { Role } from '@prisma/client';
@@ -237,6 +238,65 @@ router.post(
         lastName: member.lastName,
         memberRef: member.memberRef,
         role: member.role,
+      },
+    });
+  },
+);
+
+// POST /api/auth/provider-login — Prognosis email+password auth for gym providers
+router.post(
+  '/provider-login',
+  dobAuthRateLimiter,
+  validate(providerLoginSchema),
+  async (req: Request, res: Response): Promise<void> => {
+    const { email, password } = req.body as { email: string; password: string };
+    const ip = req.ip ?? 'unknown';
+    const userAgent = req.headers['user-agent'] ?? '';
+
+    let providerAuth: Awaited<ReturnType<typeof authenticateProvider>>;
+    try {
+      providerAuth = await authenticateProvider(email, password);
+    } catch (err) {
+      await logAudit({ action: 'PROVIDER_LOGIN', resource: 'auth', ipAddress: ip, status: 'FAILURE', details: { reason: 'UPSTREAM_ERROR', email } });
+      if (err instanceof PrognosisUpstreamError) {
+        res.status(503).json({ error: 'Authentication service temporarily unavailable. Please try again.', code: 'UPSTREAM_ERROR' });
+      } else {
+        throw err;
+      }
+      return;
+    }
+
+    if (!providerAuth) {
+      await logAudit({ action: 'PROVIDER_LOGIN', resource: 'auth', ipAddress: ip, userAgent, status: 'FAILURE', details: { reason: 'INVALID_CREDENTIALS', email } });
+      res.status(401).json({ error: 'Invalid email or password', code: 'INVALID_CREDENTIALS' });
+      return;
+    }
+
+    const provider = await db.provider.findUnique({
+      where: { gymCode: providerAuth.providerCode },
+      select: { id: true, gymCode: true, gymName: true, status: true },
+    });
+
+    if (!provider || provider.status !== 'ACTIVE') {
+      await logAudit({ action: 'PROVIDER_LOGIN', resource: 'auth', ipAddress: ip, status: 'FAILURE', details: { reason: 'PROVIDER_NOT_FOUND', providerCode: providerAuth.providerCode } });
+      res.status(403).json({ error: 'Gym not registered or currently suspended in the portal. Contact Leadway Health.', code: 'PROVIDER_NOT_FOUND' });
+      return;
+    }
+
+    // Providers get an 8-hour token — long enough for a full working shift.
+    // No refresh token: providers log in fresh each day.
+    const sessionId = generateSecureToken(16);
+    const accessToken = signAccessToken({ sub: provider.id, role: Role.PROVIDER, sessionId }, '8h');
+
+    await logAudit({ userId: provider.id, userRole: 'PROVIDER', action: 'PROVIDER_LOGIN', resource: 'auth', ipAddress: ip, userAgent, status: 'SUCCESS', details: { gymCode: provider.gymCode } });
+
+    res.json({
+      accessToken,
+      user: {
+        id: provider.id,
+        gymName: provider.gymName,
+        gymCode: provider.gymCode,
+        role: Role.PROVIDER,
       },
     });
   },

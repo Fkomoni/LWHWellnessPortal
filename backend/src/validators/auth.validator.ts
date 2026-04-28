@@ -17,6 +17,11 @@ export const verifyOtpSchema = z.object({
   role: z.enum(['ENROLLEE', 'PROVIDER', 'ADVOCATE']),
 });
 
+export const providerLoginSchema = z.object({
+  email: z.string().email('Enter a valid email address').toLowerCase(),
+  password: z.string().min(1, 'Password is required').max(128),
+});
+
 export const refreshTokenSchema = z.object({
   refreshToken: z.string().min(32).max(256),
 });

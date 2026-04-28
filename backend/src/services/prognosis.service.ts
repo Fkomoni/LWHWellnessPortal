@@ -570,7 +570,66 @@ export function syncGymsToDb(gyms: PrognosisGym[]): void {
   run().catch(() => {});
 }
 
-// ─── Session OTP generation ───────────────────────────────────────────────────
+// ─── Provider authentication ─────────────────────────────────────────────────
+
+export type PrognosisProviderAuth = {
+  providerCode: string;
+  gymName: string;
+};
+
+/**
+ * Authenticates a gym provider against Prognosis.
+ * Returns null when credentials are invalid; throws PrognosisUpstreamError on
+ * network/service failures so callers can return 503 appropriately.
+ */
+export async function authenticateProvider(
+  email: string,
+  password: string,
+): Promise<PrognosisProviderAuth | null> {
+  let res: Response;
+  try {
+    res = await fetch(`${env.PROGNOSIS_API_URL}/api/ApiUsers/ProviderLogin`, {
+      method: 'POST',
+      headers: COMMON_HEADERS,
+      body: JSON.stringify({ Username: email, Password: password }),
+    });
+  } catch (err) {
+    throw new PrognosisUpstreamError(`network error: ${String(err)}`);
+  }
+
+  // 400/401 = wrong credentials
+  if (res.status === 400 || res.status === 401) return null;
+  if (!res.ok) throw new PrognosisUpstreamError(`HTTP ${res.status}`);
+
+  let rawBody: unknown;
+  try {
+    rawBody = await res.json();
+  } catch {
+    throw new PrognosisUpstreamError('non-JSON response from provider login');
+  }
+
+  const record = unwrapBody(rawBody);
+  if (!record) return null;
+
+  const str = (keys: string[]) => {
+    for (const k of keys) {
+      const v = record[k];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+    return '';
+  };
+
+  const providerCode = str(['providerCode', 'ProviderCode', 'provider_code', 'GymCode', 'gymCode']);
+  const gymName = str(['gymName', 'GymName', 'gym_name', 'ProviderName', 'providerName']);
+
+  if (!providerCode) {
+    logger.error('prognosis.provider.auth: providerCode missing', { body: rawBody });
+    throw new PrognosisUpstreamError('providerCode missing in login response');
+  }
+
+  logger.info('prognosis.provider.auth: success', { providerCode, gymName });
+  return { providerCode, gymName };
+}
 
 export type PrognosisOtpResponse = {
   otp: string;

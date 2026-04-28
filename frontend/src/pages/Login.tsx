@@ -9,8 +9,8 @@ import OTPInput from '../components/ui/OTPInput';
 import { Dumbbell, UserCircle, Shield, ChevronRight, ArrowLeft, Loader2 } from 'lucide-react';
 import apiClient from '../lib/apiClient';
 
-// ENROLLEE uses Member ID + DOB; Provider/Advocate use phone + OTP.
-type Step = 'role' | 'dob' | 'phone' | 'otp';
+// ENROLLEE: Member ID + DOB. PROVIDER: email + password. ADVOCATE: phone + OTP.
+type Step = 'role' | 'dob' | 'email-password' | 'phone' | 'otp';
 
 const roles: Array<{ value: Role; icon: React.ReactNode; label: string; sub: string; description: string }> = [
   {
@@ -53,7 +53,11 @@ export default function Login() {
   const [memberRef, setMemberRef] = useState('');
   const [dob, setDob] = useState('');
 
-  // Provider / Advocate fields
+  // PROVIDER fields
+  const [providerEmail, setProviderEmail] = useState('');
+  const [providerPassword, setProviderPassword] = useState('');
+
+  // ADVOCATE fields
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [devOtp, setDevOtp] = useState<string | null>(null);
@@ -89,6 +93,36 @@ export default function Login() {
   const handleDobLogin = () => {
     if (!memberRef.trim() || !dob) return;
     loginDobMutation.mutate({ memberRef: memberRef.trim(), dob });
+  };
+
+  // ── PROVIDER: Email + Password via Prognosis ─────────────────────────────
+
+  const providerLoginMutation = useMutation({
+    mutationFn: async ({ email, password }: { email: string; password: string }) => {
+      const { data } = await apiClient.post('/auth/provider-login', { email, password });
+      return data as { accessToken: string; user: User };
+    },
+    onSuccess: (data) => {
+      setAuth(data.user, data.accessToken);
+      toast.success(`Welcome, ${data.user.gymName}!`);
+      navigate(redirectMap[data.user.role]);
+    },
+    onError: (err) => {
+      if (axios.isAxiosError(err)) {
+        const code = err.response?.data?.code as string | undefined;
+        if (code === 'INVALID_CREDENTIALS') toast.error('Invalid email or password. Please try again.');
+        else if (code === 'PROVIDER_NOT_FOUND') toast.error('Gym not registered in the portal. Contact Leadway Health.');
+        else if (code === 'UPSTREAM_ERROR') toast.error('Authentication service temporarily unavailable.');
+        else toast.error(err.response?.data?.error ?? 'Login failed');
+      } else {
+        toast.error('Network error. Please try again.');
+      }
+    },
+  });
+
+  const handleProviderLogin = () => {
+    if (!providerEmail.trim() || !providerPassword) return;
+    providerLoginMutation.mutate({ email: providerEmail.trim(), password: providerPassword });
   };
 
   // ── Provider / Advocate: Phone + OTP ─────────────────────────────────────
@@ -140,7 +174,9 @@ export default function Login() {
 
   const handleRoleSelect = (role: Role) => {
     setSelectedRole(role);
-    setStep(role === 'ENROLLEE' ? 'dob' : 'phone');
+    if (role === 'ENROLLEE') setStep('dob');
+    else if (role === 'PROVIDER') setStep('email-password');
+    else setStep('phone');
   };
 
   const handleRequestOtp = () => {
@@ -300,6 +336,73 @@ export default function Login() {
                     'Sign In'
                   )}
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── PROVIDER: Email + Password ── */}
+          {step === 'email-password' && selectedRoleMeta && (
+            <div className="animate-fade-in">
+              <button onClick={() => setStep('role')} className="flex items-center gap-1.5 text-white/50 hover:text-white text-sm mb-8 transition-colors">
+                <ArrowLeft size={14} /> Back
+              </button>
+              <div className="text-center mb-8">
+                <div className="inline-flex p-3 bg-brand-orange/10 rounded-xl text-brand-orange mb-4">
+                  {selectedRoleMeta.icon}
+                </div>
+                <h2 className="text-xl font-bold text-white">Gym Partner Login</h2>
+                <p className="text-white/50 text-sm mt-1">Sign in with your Leadway Health gym credentials</p>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={providerEmail}
+                    onChange={(e) => setProviderEmail(e.target.value)}
+                    placeholder="gym@example.com"
+                    onKeyDown={(e) => e.key === 'Enter' && handleProviderLogin()}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl
+                               text-white placeholder-white/30 text-sm focus:outline-none
+                               focus:border-brand-orange focus:bg-white/10 transition-all"
+                    autoComplete="email"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    value={providerPassword}
+                    onChange={(e) => setProviderPassword(e.target.value)}
+                    placeholder="••••••••"
+                    onKeyDown={(e) => e.key === 'Enter' && handleProviderLogin()}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl
+                               text-white placeholder-white/30 text-sm focus:outline-none
+                               focus:border-brand-orange focus:bg-white/10 transition-all"
+                    autoComplete="current-password"
+                  />
+                </div>
+                <button
+                  onClick={handleProviderLogin}
+                  disabled={providerLoginMutation.isPending || !providerEmail.trim() || !providerPassword}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-brand-red
+                             text-white font-semibold rounded-xl hover:bg-red-700 transition-colors
+                             disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                >
+                  {providerLoginMutation.isPending ? (
+                    <><Loader2 size={16} className="animate-spin" /> Signing in...</>
+                  ) : (
+                    'Sign In'
+                  )}
+                </button>
+                <p className="text-center text-white/30 text-xs">
+                  Use the email and password provided by Leadway Health
+                </p>
               </div>
             </div>
           )}

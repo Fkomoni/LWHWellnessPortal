@@ -2,10 +2,14 @@ export type Role = 'ENROLLEE' | 'PROVIDER' | 'ADVOCATE';
 
 export interface User {
   id: string;
-  firstName: string;
-  lastName: string;
-  memberRef: string;
   role: Role;
+  // ENROLLEE / ADVOCATE fields
+  firstName?: string;
+  lastName?: string;
+  memberRef?: string;
+  // PROVIDER fields
+  gymName?: string;
+  gymCode?: string;
 }
 
 export interface AuthState {

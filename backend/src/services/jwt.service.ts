@@ -12,9 +12,9 @@ export interface JwtPayload {
   exp?: number;
 }
 
-export function signAccessToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
+export function signAccessToken(payload: Omit<JwtPayload, 'iat' | 'exp'>, expiresIn?: string): string {
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
-    expiresIn: env.JWT_ACCESS_EXPIRY,
+    expiresIn: expiresIn ?? env.JWT_ACCESS_EXPIRY,
     issuer: 'lwh-wellness-portal',
     audience: 'lwh-client',
   } as jwt.SignOptions);
