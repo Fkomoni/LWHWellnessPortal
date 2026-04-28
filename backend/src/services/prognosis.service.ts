@@ -593,7 +593,7 @@ export async function authenticateProvider(
     res = await fetch(`${env.PROGNOSIS_API_URL}/api/WellnessBenefit/WellnessProviderLogIn`, {
       method: 'POST',
       headers: COMMON_HEADERS,
-      body: JSON.stringify({ Username: email, Password: password }),
+      body: JSON.stringify({ userName: email, password }),
     });
   } catch (err) {
     throw new PrognosisUpstreamError(`network error: ${String(err)}`);
