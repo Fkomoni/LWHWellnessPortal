@@ -20,10 +20,13 @@ export interface MemberDashboard {
     firstName: string;
     lastName: string;
     memberRef: string;
-    sessionsPerMonth: number;
-    sessionsUsed: number;
-    sessionsRemaining: number;
-    resetDate: string | null;
+    annualSessionLimit: number;
+    weeklyLimit: number;
+    weeklySessionsUsed: number;
+    weeklySessionsRemaining: number;
+    weekStart: string;
+    weekEnd: string;
+    nextWeekStart: string;
     spouseId: string | null;
     planType: string | null;
     benefitStatus: string;
@@ -31,8 +34,7 @@ export interface MemberDashboard {
   spouse: {
     firstName: string;
     lastName: string;
-    sessionsUsed: number;
-    sessionsPerMonth: number;
+    weeklyLimit: number;
   } | null;
   recentSessions: Session[];
   nearbyGyms: Gym[];

@@ -9,6 +9,7 @@ import { logAudit } from '../services/audit.service';
 import { createInAppNotification } from '../services/notification.service';
 import { initializePayment, verifyPayment, getAllPlans } from '../services/payment.service';
 import { getGymsByScheme, getWellnessBenefit, PrognosisUpstreamError } from '../services/prognosis.service';
+import { getWeekBoundaries, getNextWeekStart, calculateWeeklyLimit } from '../utils/sessions';
 import { logger } from '../utils/logger';
 import { generateSessionOtpSchema, rateGymSchema, paginationSchema } from '../validators/member.validator';
 import { z } from 'zod';
@@ -26,7 +27,7 @@ router.get('/dashboard', async (req: AuthRequest, res: Response): Promise<void> 
     where: { id: memberId },
     select: {
       id: true, firstName: true, lastName: true, memberRef: true,
-      sessionsPerMonth: true, sessionsUsed: true, resetDate: true,
+      sessionsPerMonth: true, annualSessionLimit: true, resetDate: true,
       spouseId: true, email: true, planType: true, schemeId: true,
     },
   });
@@ -37,7 +38,7 @@ router.get('/dashboard', async (req: AuthRequest, res: Response): Promise<void> 
   if (member.spouseId) {
     spouse = await db.member.findUnique({
       where: { id: member.spouseId },
-      select: { firstName: true, lastName: true, sessionsUsed: true, sessionsPerMonth: true },
+      select: { firstName: true, lastName: true, sessionsPerMonth: true, annualSessionLimit: true },
     });
   }
 
@@ -48,7 +49,7 @@ router.get('/dashboard', async (req: AuthRequest, res: Response): Promise<void> 
     include: { provider: { select: { gymName: true, location: true } } },
   });
 
-  // Fetch wellness benefit + gyms in parallel — both from Prognosis
+  // Fetch wellness benefit + gyms in parallel
   const [benefitResult, gymResult] = await Promise.allSettled([
     getWellnessBenefit(member.memberRef),
     member.schemeId ? getGymsByScheme(member.schemeId) : Promise.resolve([]),
@@ -71,37 +72,57 @@ router.get('/dashboard', async (req: AuthRequest, res: Response): Promise<void> 
     });
   }
 
-  // Prognosis is source of truth — sync back to local DB (fire-and-forget) so OTP limit checks stay accurate
-  if (benefit) {
+  // Compute weekly limit — Prognosis annual figure is source of truth
+  const annualSessionLimit = benefit?.sessionLimit ?? member.annualSessionLimit;
+  const weeklyLimit = annualSessionLimit > 0
+    ? calculateWeeklyLimit(annualSessionLimit)
+    : member.sessionsPerMonth; // fall back to stored weekly limit
+
+  // Count this week's sessions from DB (Sun–Sat, excludes CANCELLED)
+  const { start: weekStart, end: weekEnd } = getWeekBoundaries();
+  const weeklySessionsUsed = await db.session.count({
+    where: {
+      memberId,
+      sessionDate: { gte: weekStart, lte: weekEnd },
+      status: { not: 'CANCELLED' },
+    },
+  });
+  const weeklySessionsRemaining = Math.max(0, weeklyLimit - weeklySessionsUsed);
+  const nextWeekStart = getNextWeekStart();
+
+  // Sync weekly limit to local DB fire-and-forget (keeps OTP check accurate)
+  if (benefit || annualSessionLimit > 0) {
     db.member.update({
       where: { id: memberId },
       data: {
-        sessionsPerMonth: benefit.sessionLimit,
-        sessionsUsed: benefit.sessionsUsed,
-        planType: benefit.planType || undefined,
-        resetDate: benefit.resetDate ? new Date(benefit.resetDate + 'T00:00:00.000Z') : undefined,
+        sessionsPerMonth: weeklyLimit,
+        annualSessionLimit: annualSessionLimit || undefined,
+        planType: benefit?.planType || undefined,
       },
     }).catch(() => {});
   }
-
-  const sessionsPerMonth = benefit?.sessionLimit ?? member.sessionsPerMonth;
-  const sessionsUsed = benefit?.sessionsUsed ?? member.sessionsUsed;
-  const sessionsRemaining = benefit?.sessionsRemaining ?? (sessionsPerMonth - sessionsUsed);
-  const resetDate = benefit?.resetDate ?? (member.resetDate ? member.resetDate.toISOString().split('T')[0] : null);
 
   const unreadCount = await db.notification.count({ where: { memberId, readAt: null } });
 
   res.json({
     member: {
       ...member,
-      sessionsPerMonth,
-      sessionsUsed,
-      sessionsRemaining,
-      resetDate,
+      annualSessionLimit,
+      weeklyLimit,
+      weeklySessionsUsed,
+      weeklySessionsRemaining,
+      weekStart: weekStart.toISOString(),
+      weekEnd: weekEnd.toISOString(),
+      nextWeekStart: nextWeekStart.toISOString(),
       planType: benefit?.planType ?? member.planType,
       benefitStatus: benefit?.status ?? 'UNKNOWN',
     },
-    spouse,
+    spouse: spouse ? {
+      ...spouse,
+      weeklyLimit: spouse.annualSessionLimit > 0
+        ? calculateWeeklyLimit(spouse.annualSessionLimit)
+        : spouse.sessionsPerMonth,
+    } : null,
     recentSessions,
     nearbyGyms,
     unreadNotifications: unreadCount,
@@ -122,15 +143,31 @@ router.post(
     const [member, gym] = await Promise.all([
       db.member.findUnique({
         where: { id: memberId },
-        select: { phone: true, email: true, firstName: true, sessionsPerMonth: true, sessionsUsed: true, isActive: true },
+        select: { phone: true, email: true, firstName: true, sessionsPerMonth: true, isActive: true },
       }),
       db.provider.findUnique({ where: { gymCode }, select: { id: true, gymName: true, status: true } }),
     ]);
 
     if (!member?.isActive) { res.status(403).json({ error: 'Account inactive', code: 'ACCOUNT_INACTIVE' }); return; }
     if (!gym || gym.status !== 'ACTIVE') { res.status(404).json({ error: 'Gym not found or inactive', code: 'GYM_NOT_FOUND' }); return; }
-    if (member.sessionsUsed >= member.sessionsPerMonth) {
-      res.status(400).json({ error: 'Monthly session limit reached. Top up to continue.', code: 'SESSION_LIMIT_REACHED' });
+
+    // Weekly limit check — count confirmed sessions in current Sun–Sat week
+    const { start: weekStart, end: weekEnd } = getWeekBoundaries();
+    const weeklyUsed = await db.session.count({
+      where: {
+        memberId,
+        sessionDate: { gte: weekStart, lte: weekEnd },
+        status: { not: 'CANCELLED' },
+      },
+    });
+
+    if (weeklyUsed >= member.sessionsPerMonth) {
+      const nextSunday = getNextWeekStart();
+      res.status(400).json({
+        error: `Weekly session limit reached. Sessions reset on Sunday ${nextSunday.toLocaleDateString('en-NG', { day: 'numeric', month: 'long' })}.`,
+        code: 'SESSION_LIMIT_REACHED',
+        nextResetDate: nextSunday.toISOString(),
+      });
       return;
     }
 

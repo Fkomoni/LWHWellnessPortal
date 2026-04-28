@@ -26,7 +26,7 @@ export default function EnrolleeGenerateOTP() {
     },
     onError: (err: { response?: { data?: { code?: string; error?: string } } }) => {
       const code = err.response?.data?.code;
-      if (code === 'SESSION_LIMIT_REACHED') toast.error('Monthly session limit reached');
+      if (code === 'SESSION_LIMIT_REACHED') toast.error(err.response?.data?.error ?? 'Weekly session limit reached. Resets Sunday.');
       else if (code === 'GYM_NOT_FOUND') toast.error('Gym code not found. Check and try again.');
       else if (code === 'OTP_TOO_FREQUENT') toast.error('Please wait before generating another OTP');
       else toast.error(err.response?.data?.error ?? 'Could not generate OTP');
