@@ -82,8 +82,9 @@ model Member {
   email            String?   @unique
   role             Role      @default(ENROLLEE)
   isActive         Boolean   @default(true)
-  sessionsPerMonth Int       @default(12)
-  sessionsUsed     Int       @default(0)
+  sessionsPerMonth    Int       @default(1)   // weekly session limit — synced from Prognosis
+  annualSessionLimit  Int       @default(0)   // raw annual figure from Prognosis WellnessBenefit API
+  sessionsUsed        Int       @default(0)
   resetDate        DateTime?
   spouseId         String?
   planType         String    @default("STANDARD") // STANDARD | PREMIUM
@@ -108,9 +109,9 @@ model Provider {
   id          String         @id @default(cuid())
   gymCode     String         @unique
   gymName     String
-  phone       String         @unique
-  email       String         @unique
-  location    String
+  phone       String?        @unique
+  email       String?        @unique
+  location    String?
   address     String?
   lga         String
   state       String         @default("Lagos")

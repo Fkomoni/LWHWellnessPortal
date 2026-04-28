@@ -69,39 +69,71 @@ export default function EnrolleeDashboard() {
   }
 
   const { member, spouse, recentSessions, nearbyGyms } = data;
-  const sessionBubbles = Array.from({ length: member.sessionsPerMonth }, (_, i) => i < member.sessionsUsed);
+  const sessionBubbles = Array.from({ length: member.weeklyLimit }, (_, i) => i < member.weeklySessionsUsed);
+  const weekStartDate = new Date(member.weekStart);
+  const weekEndDate = new Date(member.weekEnd);
+  const fmt = (d: Date) => d.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
+  const weekLabel = `${fmt(weekStartDate)} – ${fmt(weekEndDate)}`;
+
+  const isInactive = member.benefitStatus && member.benefitStatus !== 'ACTIVE' && member.benefitStatus !== 'UNKNOWN';
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-xl font-bold text-grey-5">
-          My Wellness Dashboard
-        </h1>
-        <p className="text-sm text-grey-4 mt-0.5">
-          Welcome back, {user?.firstName} — here's your gym benefit summary
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-grey-5">My Wellness Dashboard</h1>
+          <p className="text-sm text-grey-4 mt-0.5">
+            Welcome back, {user?.firstName} — here's your gym benefit summary
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          {member.planType && (
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-brand-red/10 text-brand-red">
+              {member.planType}
+            </span>
+          )}
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+            member.benefitStatus === 'ACTIVE'
+              ? 'bg-green-100 text-green-700'
+              : member.benefitStatus === 'UNKNOWN'
+              ? 'bg-grey-2 text-grey-4'
+              : 'bg-red-100 text-red-700'
+          }`}>
+            {member.benefitStatus === 'UNKNOWN' ? 'Status unknown' : member.benefitStatus}
+          </span>
+        </div>
       </div>
+
+      {isInactive && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-3">
+          <div className="text-red-500 mt-0.5 flex-shrink-0">⚠️</div>
+          <div className="text-xs text-red-700">
+            <strong>Benefit {member.benefitStatus}:</strong> Your gym benefit is currently not active.
+            Please contact Leadway Health for assistance.
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          label="Sessions Remaining"
-          value={member.sessionsRemaining}
-          sub={`of ${member.sessionsPerMonth} monthly`}
+          label="This Week Left"
+          value={member.weeklySessionsRemaining}
+          sub={`of ${member.weeklyLimit} weekly`}
           color="red"
           icon={<QrCode size={18} />}
         />
         <StatCard
-          label="Sessions Used"
-          value={member.sessionsUsed}
-          sub={`This month`}
+          label="Used This Week"
+          value={member.weeklySessionsUsed}
+          sub={weekLabel}
           color="orange"
         />
         {spouse && (
           <StatCard
-            label="Spouse Sessions"
-            value={spouse.sessionsPerMonth - spouse.sessionsUsed}
-            sub={`${spouse.firstName} — ${spouse.sessionsUsed} used`}
+            label="Spouse Weekly"
+            value={spouse.weeklyLimit}
+            sub={`${spouse.firstName} — ${spouse.weeklyLimit} per week`}
             color="blue"
           />
         )}
@@ -119,16 +151,16 @@ export default function EnrolleeDashboard() {
         <div className="text-blue-500 mt-0.5 flex-shrink-0">ℹ️</div>
         <div className="text-xs text-blue-700">
           <strong>Benefit Note:</strong> Only principal and spouse are covered. Each member must generate their own OTP.
-          Sessions reset on {member.resetDate ? new Date(member.resetDate).toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' }) : 'next month 1st'}.
+          Sessions reset every Sunday. This week: {weekLabel}.
         </div>
       </div>
 
-      {/* Monthly sessions visual */}
+      {/* Weekly sessions visual */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="font-bold text-grey-5">Monthly Sessions</h2>
-            <p className="text-xs text-grey-4 mt-0.5">{new Date().toLocaleDateString('en-NG', { month: 'long', year: 'numeric' })} breakdown</p>
+            <h2 className="font-bold text-grey-5">This Week's Sessions</h2>
+            <p className="text-xs text-grey-4 mt-0.5">{weekLabel} · {member.weeklySessionsUsed} of {member.weeklyLimit} used</p>
           </div>
           <Link to="/member/generate-otp">
             <button className="btn-primary flex items-center gap-2 text-xs">
@@ -141,12 +173,10 @@ export default function EnrolleeDashboard() {
             <SessionBubble key={i} session={{ status: used ? 'CONFIRMED' : 'PENDING' } as Session} index={i} />
           ))}
         </div>
-        {member.resetDate && (
-          <p className="text-xs text-grey-4 mt-3 flex items-center gap-1">
-            <Clock size={12} />
-            Plan resets on {new Date(member.resetDate).toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' })}
-          </p>
-        )}
+        <p className="text-xs text-grey-4 mt-3 flex items-center gap-1">
+          <Clock size={12} />
+          Resets Sunday {fmt(new Date(member.nextWeekStart))} · {member.annualSessionLimit} sessions per year
+        </p>
       </div>
 
       {/* Recent activity */}

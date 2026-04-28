@@ -1,5 +1,6 @@
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
+import { db } from '../config/database';
 
 export class PrognosisUpstreamError extends Error {
   constructor(public readonly cause: string) {
@@ -85,6 +86,87 @@ export function invalidatePrognosisToken(): void {
 }
 
 export { COMMON_HEADERS as PROGNOSIS_HEADERS };
+
+// ─── Wellness benefit ─────────────────────────────────────────────────────────
+
+export type WellnessBenefit = {
+  planType: string;
+  sessionLimit: number;
+  sessionsUsed: number;
+  sessionsRemaining: number;
+  resetDate: string | null;  // YYYY-MM-DD
+  status: string;            // 'ACTIVE' | 'INACTIVE' etc.
+};
+
+/**
+ * Fetches the live wellness benefit for a member from Prognosis.
+ *
+ * IMPORTANT: memberRef must NOT be URL-encoded — same gotcha as GetEnrolleeBioData.
+ * Validate against ^[A-Za-z0-9/\-]+$ before calling.
+ * Returns null when the member is not found in Prognosis.
+ */
+export async function getWellnessBenefit(memberRef: string): Promise<WellnessBenefit | null> {
+  let token: string;
+  try {
+    token = await getPrognosisToken();
+  } catch (err) {
+    if (err instanceof PrognosisUpstreamError) throw err;
+    throw new PrognosisUpstreamError(String(err));
+  }
+
+  const url = `${env.PROGNOSIS_API_URL}/api/WellnessBenefit/GetBenefit?memberRef=${memberRef}`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'GET',
+      headers: { ...COMMON_HEADERS, accept: 'application/json', Authorization: `Bearer ${token}` },
+    });
+  } catch (err) {
+    throw new PrognosisUpstreamError(`network error: ${String(err)}`);
+  }
+
+  if (res.status === 401) {
+    invalidatePrognosisToken();
+    throw new PrognosisUpstreamError('token rejected (401)');
+  }
+  if (res.status === 404) return null;
+  if (!res.ok) throw new PrognosisUpstreamError(`HTTP ${res.status}`);
+
+  const rawBody: unknown = await res.json();
+  const record = unwrapBody(rawBody);
+  if (!record || Object.keys(record).length === 0) return null;
+
+  const str = (keys: string[]) => {
+    for (const k of keys) {
+      const v = record[k];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+    return '';
+  };
+  const num = (keys: string[]) => {
+    for (const k of keys) {
+      const v = record[k];
+      if (typeof v === 'number') return v;
+      if (typeof v === 'string' && v.trim()) { const n = parseInt(v, 10); if (!isNaN(n)) return n; }
+    }
+    return 0;
+  };
+
+  const resetRaw = str(['resetDate', 'ResetDate', 'reset_date', 'PeriodEndDate', 'EndDate']);
+  const resetDate = resetRaw ? (() => { const d = new Date(resetRaw); return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0]; })() : null;
+
+  logger.info('prognosis.wellness.benefit', { memberRef, status: res.status });
+
+  return {
+    planType: str(['planType', 'PlanType', 'plan_type', 'PlanName', 'Member_Plan']),
+    sessionLimit: num(['sessionLimit', 'SessionLimit', 'session_limit', 'sessionsPerMonth', 'MonthlyLimit']),
+    sessionsUsed: num(['sessionsUsed', 'SessionsUsed', 'sessions_used', 'UsedSessions']),
+    sessionsRemaining: num(['sessionsRemaining', 'SessionsRemaining', 'sessions_remaining', 'RemainingSession']),
+    resetDate,
+    status: (str(['status', 'Status', 'BenefitStatus', 'MemberStatus']) || 'ACTIVE').toUpperCase(),
+  };
+}
 
 // ─── Enrollee bio data ────────────────────────────────────────────────────────
 
@@ -332,23 +414,16 @@ function extractGym(raw: unknown): PrognosisGym | null {
   };
 }
 
-/**
- * Returns the list of gyms/spas covered under a Prognosis scheme.
- * Throws PrognosisUpstreamError on network/auth failures.
- * Returns [] when Prognosis returns an empty list (valid — no gyms for that scheme).
- */
-export async function getGymsByScheme(schemeId: string): Promise<PrognosisGym[]> {
-  let token: string;
-  try {
-    token = await getPrognosisToken();
-  } catch (err) {
-    if (err instanceof PrognosisUpstreamError) throw err;
-    throw new PrognosisUpstreamError(String(err));
-  }
+const INACTIVE_GYM_PATTERN = /suspended|terminated|closed/i;
 
+async function fetchGymPage(
+  token: string,
+  schemeId: string,
+  minimumId: number,
+): Promise<{ records: unknown[]; totalRecord: number }> {
   const url =
     `${env.PROGNOSIS_API_URL}/api/ListValues/GetGeneralGymandSpaByPlanCode` +
-    `?SchemeID=${encodeURIComponent(schemeId)}&MinimumID=0&NoOfRecords=100&pageSize=0`;
+    `?SchemeID=${encodeURIComponent(schemeId)}&MinimumID=${minimumId}&NoOfRecords=100&pageSize=0`;
 
   let res: Response;
   try {
@@ -370,22 +445,229 @@ export async function getGymsByScheme(schemeId: string): Promise<PrognosisGym[]>
   }
 
   const rawBody: unknown = await res.json();
-
   const records = unwrapList(rawBody);
 
-  logger.info('prognosis.gyms', {
-    schemeId,
-    status: res.status,
-    bodyKeys: typeof rawBody === 'object' && rawBody !== null ? Object.keys(rawBody as object) : typeof rawBody,
-    recordCount: records.length,
-    firstRecordKeys: records.length > 0 && typeof records[0] === 'object' && records[0] !== null
-      ? Object.keys(records[0] as object)
-      : null,
-  });
+  let totalRecord = 0;
+  if (typeof rawBody === 'object' && rawBody !== null) {
+    const env2 = rawBody as Record<string, unknown>;
+    if (typeof env2['totalRecord'] === 'number') totalRecord = env2['totalRecord'];
+  }
 
-  if (records.length === 0) {
+  return { records, totalRecord };
+}
+
+/**
+ * Returns all gyms/spas covered under a Prognosis scheme, paginating until
+ * every record is fetched. Gyms with Suspended/Terminated/Closed in their
+ * name are excluded. Throws PrognosisUpstreamError on network/auth failures.
+ */
+export async function getGymsByScheme(schemeId: string): Promise<PrognosisGym[]> {
+  let token: string;
+  try {
+    token = await getPrognosisToken();
+  } catch (err) {
+    if (err instanceof PrognosisUpstreamError) throw err;
+    throw new PrognosisUpstreamError(String(err));
+  }
+
+  const allRecords: unknown[] = [];
+  let minimumId = 0;
+  let totalRecord = 0;
+  const MAX_PAGES = 20;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const result = await fetchGymPage(token, schemeId, minimumId);
+
+    if (page === 0) {
+      totalRecord = result.totalRecord;
+      logger.info('prognosis.gyms', {
+        schemeId,
+        totalRecord,
+        firstRecordKeys: result.records.length > 0 && typeof result.records[0] === 'object' && result.records[0] !== null
+          ? Object.keys(result.records[0] as object)
+          : null,
+      });
+    }
+
+    allRecords.push(...result.records);
+
+    if (result.records.length === 0) break;
+
+    // Check if we've fetched everything
+    if (totalRecord > 0 && allRecords.length >= totalRecord) break;
+
+    // Advance cursor using last record's provider_id
+    const last = result.records[result.records.length - 1];
+    if (typeof last === 'object' && last !== null) {
+      const lastId = (last as Record<string, unknown>)['provider_id'];
+      if (typeof lastId === 'number' && lastId > minimumId) {
+        minimumId = lastId;
+      } else {
+        break; // no valid cursor — stop to avoid infinite loop
+      }
+    } else {
+      break;
+    }
+  }
+
+  logger.info('prognosis.gyms: pagination complete', { schemeId, totalFetched: allRecords.length, totalRecord });
+
+  if (allRecords.length === 0) {
     logger.warn('prognosis.gyms: empty list or unrecognised shape', { schemeId });
   }
 
-  return records.map(extractGym).filter((g): g is PrognosisGym => g !== null);
+  return allRecords
+    .map(extractGym)
+    .filter((g): g is PrognosisGym => g !== null)
+    .filter((g) => !INACTIVE_GYM_PATTERN.test(g.gymName));
+}
+
+/**
+ * Upserts all Prognosis gyms into the local Provider table so the DB stays
+ * in sync with the plan's gym list. Runs fire-and-forget — never blocks callers.
+ * Uses gymCode as the unique key; phone/email left null for Prognosis-synced gyms.
+ */
+export function syncGymsToDb(gyms: PrognosisGym[]): void {
+  if (gyms.length === 0) return;
+
+  const run = async () => {
+    let upserted = 0;
+    for (const gym of gyms) {
+      if (!gym.gymCode) continue;
+      try {
+        await db.provider.upsert({
+          where: { gymCode: gym.gymCode },
+          create: {
+            gymCode: gym.gymCode,
+            gymName: gym.gymName,
+            phone: gym.phone || null,
+            location: gym.address || gym.lga || gym.gymName,
+            address: gym.address || null,
+            lga: gym.lga,
+            state: gym.state || 'Lagos',
+            latitude: gym.latitude ?? null,
+            longitude: gym.longitude ?? null,
+          },
+          update: {
+            gymName: gym.gymName,
+            phone: gym.phone || undefined,
+            location: gym.address || gym.lga || gym.gymName,
+            address: gym.address || undefined,
+            lga: gym.lga,
+            state: gym.state || undefined,
+            latitude: gym.latitude ?? undefined,
+            longitude: gym.longitude ?? undefined,
+          },
+        });
+        upserted++;
+      } catch {
+        // Skip individual failures (e.g. phone unique conflict) — don't abort the batch
+      }
+    }
+    logger.info('prognosis.gyms.sync', { total: gyms.length, upserted });
+  };
+
+  run().catch(() => {});
+}
+
+// ─── Session OTP generation ───────────────────────────────────────────────────
+
+export type PrognosisOtpResponse = {
+  otp: string;
+  memberRef: string;
+  memberName: string;
+  providerCode: string;
+  gymName: string;
+  expiresAt: string;
+  sessionsRemaining: number;
+};
+
+/**
+ * Generates a session OTP via Prognosis. The OTP depletes the member's
+ * annual benefit counter on the Prognosis side.
+ *
+ * Returns null when Prognosis reports BENEFIT_EXHAUSTED (no sessions left).
+ * Throws PrognosisUpstreamError on network/auth failures — callers must return
+ * 503 and NOT fall back to locally-generated OTPs.
+ */
+export async function generatePrognosisSessionOtp(
+  memberRef: string,
+  providerCode: string,
+): Promise<PrognosisOtpResponse | null> {
+  let token: string;
+  try {
+    token = await getPrognosisToken();
+  } catch (err) {
+    if (err instanceof PrognosisUpstreamError) throw err;
+    throw new PrognosisUpstreamError(String(err));
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(`${env.PROGNOSIS_API_URL}/api/WellnessBenefit/GenerateSessionOtp`, {
+      method: 'POST',
+      headers: { ...COMMON_HEADERS, Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ MemberRef: memberRef, ProviderCode: providerCode }),
+    });
+  } catch (err) {
+    throw new PrognosisUpstreamError(`network error: ${String(err)}`);
+  }
+
+  if (res.status === 401) {
+    invalidatePrognosisToken();
+    throw new PrognosisUpstreamError('token rejected (401)');
+  }
+
+  const rawBody: unknown = await res.json();
+
+  // Detect benefit-exhausted failure before checking res.ok
+  if (typeof rawBody === 'object' && rawBody !== null) {
+    const obj = rawBody as Record<string, unknown>;
+    if (
+      obj['success'] === false ||
+      obj['code'] === 'BENEFIT_EXHAUSTED' ||
+      (typeof obj['error'] === 'string' && /no sessions remaining/i.test(obj['error'] as string))
+    ) {
+      logger.info('prognosis.otp: benefit exhausted', { memberRef, providerCode, body: obj['code'] ?? obj['error'] });
+      return null;
+    }
+  }
+
+  if (!res.ok) {
+    logger.error('prognosis.otp.error', { memberRef, providerCode, httpStatus: res.status, body: rawBody });
+    throw new PrognosisUpstreamError(`HTTP ${res.status}`);
+  }
+
+  const record = unwrapBody(rawBody);
+  if (!record) {
+    logger.error('prognosis.otp.error', { memberRef, providerCode, httpStatus: res.status, body: rawBody, reason: 'unexpected shape' });
+    throw new PrognosisUpstreamError('unexpected OTP response shape');
+  }
+
+  const str = (keys: string[]) => {
+    for (const k of keys) {
+      const v = record[k];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+    return '';
+  };
+
+  const otp = str(['otp', 'OTP', 'Otp', 'otpCode', 'OtpCode', 'OTPCode']);
+  if (!otp) throw new PrognosisUpstreamError('OTP field missing in response');
+
+  const expiresAt = str(['expiresAt', 'ExpiresAt', 'expires_at', 'ExpiryTime', 'expiry']);
+  const sessionsRemainingRaw = record['sessionsRemaining'] ?? record['SessionsRemaining'] ?? record['sessions_remaining'];
+  const sessionsRemaining = typeof sessionsRemainingRaw === 'number' ? sessionsRemainingRaw : 0;
+
+  logger.info('prognosis.otp: generated', { memberRef, providerCode, expiresAt });
+
+  return {
+    otp,
+    memberRef: str(['memberRef', 'MemberRef', 'member_ref']),
+    memberName: str(['memberName', 'MemberName', 'member_name', 'MemberFullName']),
+    providerCode: str(['providerCode', 'ProviderCode', 'provider_code']) || providerCode,
+    gymName: str(['gymName', 'GymName', 'gym_name', 'ProviderName', 'providerName']),
+    expiresAt,
+    sessionsRemaining,
+  };
 }

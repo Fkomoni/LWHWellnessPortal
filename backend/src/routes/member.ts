@@ -1,4 +1,6 @@
 import { Router, Response } from 'express';
+import { OtpPurpose, OtpGeneratedBy } from '@prisma/client';
+import { hashOTP } from '../utils/crypto';
 import { db } from '../config/database';
 import { requireAuth, requireRole, AuthRequest } from '../middleware/auth';
 import { validate, validateQuery } from '../middleware/validate';
@@ -8,7 +10,8 @@ import { generateSessionOTP } from '../services/otp.service';
 import { logAudit } from '../services/audit.service';
 import { createInAppNotification } from '../services/notification.service';
 import { initializePayment, verifyPayment, getAllPlans } from '../services/payment.service';
-import { getGymsByScheme, PrognosisUpstreamError } from '../services/prognosis.service';
+import { getGymsByScheme, getWellnessBenefit, generatePrognosisSessionOtp, syncGymsToDb, PrognosisUpstreamError } from '../services/prognosis.service';
+import { getWeekBoundaries, getNextWeekStart, calculateWeeklyLimit } from '../utils/sessions';
 import { logger } from '../utils/logger';
 import { generateSessionOtpSchema, rateGymSchema, paginationSchema } from '../validators/member.validator';
 import { z } from 'zod';
@@ -26,7 +29,7 @@ router.get('/dashboard', async (req: AuthRequest, res: Response): Promise<void> 
     where: { id: memberId },
     select: {
       id: true, firstName: true, lastName: true, memberRef: true,
-      sessionsPerMonth: true, sessionsUsed: true, resetDate: true,
+      sessionsPerMonth: true, annualSessionLimit: true, resetDate: true,
       spouseId: true, email: true, planType: true, schemeId: true,
     },
   });
@@ -37,7 +40,7 @@ router.get('/dashboard', async (req: AuthRequest, res: Response): Promise<void> 
   if (member.spouseId) {
     spouse = await db.member.findUnique({
       where: { id: member.spouseId },
-      select: { firstName: true, lastName: true, sessionsUsed: true, sessionsPerMonth: true },
+      select: { firstName: true, lastName: true, sessionsPerMonth: true, annualSessionLimit: true },
     });
   }
 
@@ -48,29 +51,82 @@ router.get('/dashboard', async (req: AuthRequest, res: Response): Promise<void> 
     include: { provider: { select: { gymName: true, location: true } } },
   });
 
-  // Try Prognosis gyms first; fall back to local DB
-  let nearbyGyms: unknown[] = [];
-  if (member.schemeId) {
-    try {
-      nearbyGyms = await getGymsByScheme(member.schemeId);
-    } catch (err) {
-      if (!(err instanceof PrognosisUpstreamError)) throw err;
-      logger.warn('dashboard: Prognosis gym fetch failed, using local DB', { cause: (err as PrognosisUpstreamError).cause });
-    }
+  // Fetch wellness benefit + gyms in parallel
+  const [benefitResult, gymResult] = await Promise.allSettled([
+    getWellnessBenefit(member.memberRef),
+    member.schemeId ? getGymsByScheme(member.schemeId) : Promise.resolve([]),
+  ]);
+
+  const benefit = benefitResult.status === 'fulfilled' ? benefitResult.value : null;
+  if (benefitResult.status === 'rejected') {
+    logger.warn('dashboard: wellness benefit fetch failed', { cause: String(benefitResult.reason) });
   }
-  if (nearbyGyms.length === 0) {
+
+  let nearbyGyms: unknown[];
+  if (gymResult.status === 'fulfilled' && gymResult.value.length > 0) {
+    nearbyGyms = gymResult.value;
+    syncGymsToDb(gymResult.value); // fire-and-forget DB sync
+  } else {
+    if (gymResult.status === 'rejected') {
+      logger.warn('dashboard: Prognosis gym fetch failed, using local DB', { cause: String(gymResult.reason) });
+    }
     nearbyGyms = await db.provider.findMany({
       where: { status: 'ACTIVE' },
-      select: { id: true, gymName: true, location: true, lga: true, latitude: true, longitude: true, amenities: true, hours: true },
-      take: 20,
+      select: { gymCode: true, gymName: true, location: true, lga: true, latitude: true, longitude: true, amenities: true, hours: true },
     });
+  }
+
+  // Compute weekly limit — Prognosis annual figure is source of truth
+  const annualSessionLimit = benefit?.sessionLimit ?? member.annualSessionLimit;
+  const weeklyLimit = annualSessionLimit > 0
+    ? calculateWeeklyLimit(annualSessionLimit)
+    : member.sessionsPerMonth; // fall back to stored weekly limit
+
+  // Count this week's sessions from DB (Sun–Sat, excludes CANCELLED)
+  const { start: weekStart, end: weekEnd } = getWeekBoundaries();
+  const weeklySessionsUsed = await db.session.count({
+    where: {
+      memberId,
+      sessionDate: { gte: weekStart, lte: weekEnd },
+      status: { not: 'CANCELLED' },
+    },
+  });
+  const weeklySessionsRemaining = Math.max(0, weeklyLimit - weeklySessionsUsed);
+  const nextWeekStart = getNextWeekStart();
+
+  // Sync weekly limit to local DB fire-and-forget (keeps OTP check accurate)
+  if (benefit || annualSessionLimit > 0) {
+    db.member.update({
+      where: { id: memberId },
+      data: {
+        sessionsPerMonth: weeklyLimit,
+        annualSessionLimit: annualSessionLimit || undefined,
+        planType: benefit?.planType || undefined,
+      },
+    }).catch(() => {});
   }
 
   const unreadCount = await db.notification.count({ where: { memberId, readAt: null } });
 
   res.json({
-    member: { ...member, sessionsRemaining: member.sessionsPerMonth - member.sessionsUsed },
-    spouse,
+    member: {
+      ...member,
+      annualSessionLimit,
+      weeklyLimit,
+      weeklySessionsUsed,
+      weeklySessionsRemaining,
+      weekStart: weekStart.toISOString(),
+      weekEnd: weekEnd.toISOString(),
+      nextWeekStart: nextWeekStart.toISOString(),
+      planType: benefit?.planType ?? member.planType,
+      benefitStatus: benefit?.status ?? 'UNKNOWN',
+    },
+    spouse: spouse ? {
+      ...spouse,
+      weeklyLimit: spouse.annualSessionLimit > 0
+        ? calculateWeeklyLimit(spouse.annualSessionLimit)
+        : spouse.sessionsPerMonth,
+    } : null,
     recentSessions,
     nearbyGyms,
     unreadNotifications: unreadCount,
@@ -91,29 +147,82 @@ router.post(
     const [member, gym] = await Promise.all([
       db.member.findUnique({
         where: { id: memberId },
-        select: { phone: true, email: true, firstName: true, sessionsPerMonth: true, sessionsUsed: true, isActive: true },
+        select: { phone: true, memberRef: true, sessionsPerMonth: true, isActive: true },
       }),
       db.provider.findUnique({ where: { gymCode }, select: { id: true, gymName: true, status: true } }),
     ]);
 
     if (!member?.isActive) { res.status(403).json({ error: 'Account inactive', code: 'ACCOUNT_INACTIVE' }); return; }
-    if (!gym || gym.status !== 'ACTIVE') { res.status(404).json({ error: 'Gym not found or inactive', code: 'GYM_NOT_FOUND' }); return; }
-    if (member.sessionsUsed >= member.sessionsPerMonth) {
-      res.status(400).json({ error: 'Monthly session limit reached. Top up to continue.', code: 'SESSION_LIMIT_REACHED' });
+    if (!gym || gym.status !== 'ACTIVE') {
+      res.status(404).json({ error: 'Gym not found or not registered in the portal', code: 'GYM_NOT_FOUND' });
       return;
     }
 
-    const { otp, expiresAt } = await generateSessionOTP(memberId, member.phone, ip);
+    // Fast weekly pre-check from local DB — avoids unnecessary Prognosis call
+    const { start: weekStart, end: weekEnd } = getWeekBoundaries();
+    const weeklyUsed = await db.session.count({
+      where: { memberId, sessionDate: { gte: weekStart, lte: weekEnd }, status: { not: 'CANCELLED' } },
+    });
+    if (weeklyUsed >= member.sessionsPerMonth) {
+      const nextSunday = getNextWeekStart();
+      res.status(400).json({
+        error: `Weekly session limit reached. Sessions reset on Sunday ${nextSunday.toLocaleDateString('en-NG', { day: 'numeric', month: 'long' })}.`,
+        code: 'SESSION_LIMIT_REACHED',
+        nextResetDate: nextSunday.toISOString(),
+      });
+      return;
+    }
+
+    // Generate OTP via Prognosis — no local fallback (OTP must deduct Prognosis benefit)
+    let prognosisResult: Awaited<ReturnType<typeof generatePrognosisSessionOtp>>;
+    try {
+      prognosisResult = await generatePrognosisSessionOtp(member.memberRef, gymCode);
+    } catch (err) {
+      if (err instanceof PrognosisUpstreamError) {
+        await logAudit({ userId: memberId, userRole: 'ENROLLEE', action: 'SESSION_OTP_GENERATE', resource: 'member', resourceId: gym.id, ipAddress: ip, status: 'FAILURE', details: { reason: 'UPSTREAM_ERROR', gymCode } });
+        res.status(503).json({ error: 'We are currently unable to generate an OTP. Please try again later.', code: 'UPSTREAM_ERROR' });
+        return;
+      }
+      throw err;
+    }
+
+    if (!prognosisResult) {
+      res.status(400).json({ error: 'No sessions remaining on your benefit. Please contact Leadway Health.', code: 'SESSION_LIMIT_REACHED' });
+      return;
+    }
+
+    // Hash Prognosis OTP and store — provider validates against this hash
+    const expiresAt = prognosisResult.expiresAt
+      ? new Date(prognosisResult.expiresAt)
+      : new Date(Date.now() + 2 * 60 * 60 * 1000);
+    const otpHash = await hashOTP(prognosisResult.otp);
+
+    const otpRecord = await db.otpRecord.create({
+      data: {
+        memberId,
+        phone: member.phone ?? '',
+        otpHash,
+        purpose: OtpPurpose.SESSION,
+        generatedBy: OtpGeneratedBy.MEMBER,
+        expiresAt,
+        ipAddress: ip,
+      },
+    });
+
+    await db.session.create({
+      data: { memberId, providerId: gym.id, sessionOtpId: otpRecord.id, generatedBy: OtpGeneratedBy.MEMBER, status: 'PENDING' },
+    });
 
     await logAudit({
       userId: memberId, userRole: 'ENROLLEE', action: 'SESSION_OTP_GENERATE',
       resource: 'member', resourceId: gym.id, ipAddress: ip,
-      status: 'SUCCESS', details: { gymCode, gymName: gym.gymName },
+      status: 'SUCCESS', details: { gymCode, gymName: prognosisResult.gymName || gym.gymName },
     });
 
     res.json({
-      otp, expiresAt,
-      gym: { name: gym.gymName, code: gymCode },
+      otp: prognosisResult.otp,
+      expiresAt: expiresAt.toISOString(),
+      gym: { name: prognosisResult.gymName || gym.gymName, code: gymCode },
       message: 'Show this OTP to the gym receptionist. Valid for 2 hours.',
     });
   },
@@ -156,7 +265,7 @@ router.post('/rate-gym', validate(rateGymSchema), async (req: AuthRequest, res: 
   res.json({ message: 'Rating submitted. Thank you!' });
 });
 
-// GET /api/member/gyms — gym finder (Prognosis live data, local-DB fallback)
+// GET /api/member/gyms — full Prognosis plan gym list; syncs to local DB in background
 router.get('/gyms', async (req: AuthRequest, res: Response): Promise<void> => {
   const memberId = req.user!.sub;
 
@@ -168,6 +277,7 @@ router.get('/gyms', async (req: AuthRequest, res: Response): Promise<void> => {
   if (member?.schemeId) {
     try {
       const prognosisGyms = await getGymsByScheme(member.schemeId);
+      syncGymsToDb(prognosisGyms); // keep local DB in sync, fire-and-forget
       res.json({ gyms: prognosisGyms, source: 'prognosis' });
       return;
     } catch (err) {
@@ -176,13 +286,10 @@ router.get('/gyms', async (req: AuthRequest, res: Response): Promise<void> => {
     }
   }
 
-  // Fallback: return locally seeded providers
+  // Fallback: local DB
   const gyms = await db.provider.findMany({
     where: { status: 'ACTIVE' },
-    select: {
-      id: true, gymCode: true, gymName: true, location: true, address: true,
-      lga: true, state: true, latitude: true, longitude: true, amenities: true, hours: true,
-    },
+    select: { gymCode: true, gymName: true, location: true, address: true, lga: true, state: true, latitude: true, longitude: true, amenities: true, hours: true },
     orderBy: { gymName: 'asc' },
   });
   res.json({ gyms, source: 'local' });
