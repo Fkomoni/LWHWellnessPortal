@@ -590,10 +590,12 @@ export async function authenticateProvider(
 
   let res: Response;
   try {
-    res = await fetch(`${env.PROGNOSIS_API_URL}/api/WellnessBenefit/WellnessProviderLogIn`, {
+    const url = new URL(`${env.PROGNOSIS_API_URL}/api/WellnessBenefit/WellnessProviderLogIn`);
+    url.searchParams.set('userName', email);
+    url.searchParams.set('password', password);
+    res = await fetch(url.toString(), {
       method: 'POST',
       headers: COMMON_HEADERS,
-      body: JSON.stringify({ userName: email, password }),
     });
   } catch (err) {
     throw new PrognosisUpstreamError(`network error: ${String(err)}`);
