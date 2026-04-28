@@ -8,7 +8,7 @@ import { generateSessionOTP } from '../services/otp.service';
 import { logAudit } from '../services/audit.service';
 import { createInAppNotification } from '../services/notification.service';
 import { initializePayment, verifyPayment, getAllPlans } from '../services/payment.service';
-import { getGymsByScheme, PrognosisUpstreamError } from '../services/prognosis.service';
+import { getGymsByScheme, getWellnessBenefit, PrognosisUpstreamError } from '../services/prognosis.service';
 import { logger } from '../utils/logger';
 import { generateSessionOtpSchema, rateGymSchema, paginationSchema } from '../validators/member.validator';
 import { z } from 'zod';
@@ -48,15 +48,20 @@ router.get('/dashboard', async (req: AuthRequest, res: Response): Promise<void> 
     include: { provider: { select: { gymName: true, location: true } } },
   });
 
-  // Try Prognosis gyms first; fall back to local DB
-  let nearbyGyms: unknown[] = [];
-  if (member.schemeId) {
-    try {
-      nearbyGyms = await getGymsByScheme(member.schemeId);
-    } catch (err) {
-      if (!(err instanceof PrognosisUpstreamError)) throw err;
-      logger.warn('dashboard: Prognosis gym fetch failed, using local DB', { cause: (err as PrognosisUpstreamError).cause });
-    }
+  // Fetch wellness benefit + gyms in parallel — both from Prognosis
+  const [benefitResult, gymResult] = await Promise.allSettled([
+    getWellnessBenefit(member.memberRef),
+    member.schemeId ? getGymsByScheme(member.schemeId) : Promise.resolve([]),
+  ]);
+
+  const benefit = benefitResult.status === 'fulfilled' ? benefitResult.value : null;
+  if (benefitResult.status === 'rejected') {
+    logger.warn('dashboard: wellness benefit fetch failed', { cause: String(benefitResult.reason) });
+  }
+
+  let nearbyGyms: unknown[] = gymResult.status === 'fulfilled' ? gymResult.value : [];
+  if (gymResult.status === 'rejected') {
+    logger.warn('dashboard: Prognosis gym fetch failed, using local DB', { cause: String(gymResult.reason) });
   }
   if (nearbyGyms.length === 0) {
     nearbyGyms = await db.provider.findMany({
@@ -66,10 +71,36 @@ router.get('/dashboard', async (req: AuthRequest, res: Response): Promise<void> 
     });
   }
 
+  // Prognosis is source of truth — sync back to local DB (fire-and-forget) so OTP limit checks stay accurate
+  if (benefit) {
+    db.member.update({
+      where: { id: memberId },
+      data: {
+        sessionsPerMonth: benefit.sessionLimit,
+        sessionsUsed: benefit.sessionsUsed,
+        planType: benefit.planType || undefined,
+        resetDate: benefit.resetDate ? new Date(benefit.resetDate + 'T00:00:00.000Z') : undefined,
+      },
+    }).catch(() => {});
+  }
+
+  const sessionsPerMonth = benefit?.sessionLimit ?? member.sessionsPerMonth;
+  const sessionsUsed = benefit?.sessionsUsed ?? member.sessionsUsed;
+  const sessionsRemaining = benefit?.sessionsRemaining ?? (sessionsPerMonth - sessionsUsed);
+  const resetDate = benefit?.resetDate ?? (member.resetDate ? member.resetDate.toISOString().split('T')[0] : null);
+
   const unreadCount = await db.notification.count({ where: { memberId, readAt: null } });
 
   res.json({
-    member: { ...member, sessionsRemaining: member.sessionsPerMonth - member.sessionsUsed },
+    member: {
+      ...member,
+      sessionsPerMonth,
+      sessionsUsed,
+      sessionsRemaining,
+      resetDate,
+      planType: benefit?.planType ?? member.planType,
+      benefitStatus: benefit?.status ?? 'UNKNOWN',
+    },
     spouse,
     recentSessions,
     nearbyGyms,

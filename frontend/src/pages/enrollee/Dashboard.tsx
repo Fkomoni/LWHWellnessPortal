@@ -71,16 +71,44 @@ export default function EnrolleeDashboard() {
   const { member, spouse, recentSessions, nearbyGyms } = data;
   const sessionBubbles = Array.from({ length: member.sessionsPerMonth }, (_, i) => i < member.sessionsUsed);
 
+  const isInactive = member.benefitStatus && member.benefitStatus !== 'ACTIVE' && member.benefitStatus !== 'UNKNOWN';
+
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-xl font-bold text-grey-5">
-          My Wellness Dashboard
-        </h1>
-        <p className="text-sm text-grey-4 mt-0.5">
-          Welcome back, {user?.firstName} — here's your gym benefit summary
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-grey-5">My Wellness Dashboard</h1>
+          <p className="text-sm text-grey-4 mt-0.5">
+            Welcome back, {user?.firstName} — here's your gym benefit summary
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          {member.planType && (
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-brand-red/10 text-brand-red">
+              {member.planType}
+            </span>
+          )}
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+            member.benefitStatus === 'ACTIVE'
+              ? 'bg-green-100 text-green-700'
+              : member.benefitStatus === 'UNKNOWN'
+              ? 'bg-grey-2 text-grey-4'
+              : 'bg-red-100 text-red-700'
+          }`}>
+            {member.benefitStatus === 'UNKNOWN' ? 'Status unknown' : member.benefitStatus}
+          </span>
+        </div>
       </div>
+
+      {isInactive && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-3">
+          <div className="text-red-500 mt-0.5 flex-shrink-0">⚠️</div>
+          <div className="text-xs text-red-700">
+            <strong>Benefit {member.benefitStatus}:</strong> Your gym benefit is currently not active.
+            Please contact Leadway Health for assistance.
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

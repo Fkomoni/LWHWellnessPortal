@@ -25,6 +25,8 @@ export interface MemberDashboard {
     sessionsRemaining: number;
     resetDate: string | null;
     spouseId: string | null;
+    planType: string | null;
+    benefitStatus: string;
   };
   spouse: {
     firstName: string;

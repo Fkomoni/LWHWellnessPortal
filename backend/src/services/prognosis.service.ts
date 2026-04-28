@@ -86,6 +86,87 @@ export function invalidatePrognosisToken(): void {
 
 export { COMMON_HEADERS as PROGNOSIS_HEADERS };
 
+// ─── Wellness benefit ─────────────────────────────────────────────────────────
+
+export type WellnessBenefit = {
+  planType: string;
+  sessionLimit: number;
+  sessionsUsed: number;
+  sessionsRemaining: number;
+  resetDate: string | null;  // YYYY-MM-DD
+  status: string;            // 'ACTIVE' | 'INACTIVE' etc.
+};
+
+/**
+ * Fetches the live wellness benefit for a member from Prognosis.
+ *
+ * IMPORTANT: memberRef must NOT be URL-encoded — same gotcha as GetEnrolleeBioData.
+ * Validate against ^[A-Za-z0-9/\-]+$ before calling.
+ * Returns null when the member is not found in Prognosis.
+ */
+export async function getWellnessBenefit(memberRef: string): Promise<WellnessBenefit | null> {
+  let token: string;
+  try {
+    token = await getPrognosisToken();
+  } catch (err) {
+    if (err instanceof PrognosisUpstreamError) throw err;
+    throw new PrognosisUpstreamError(String(err));
+  }
+
+  const url = `${env.PROGNOSIS_API_URL}/api/WellnessBenefit/GetBenefit?memberRef=${memberRef}`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'GET',
+      headers: { ...COMMON_HEADERS, accept: 'application/json', Authorization: `Bearer ${token}` },
+    });
+  } catch (err) {
+    throw new PrognosisUpstreamError(`network error: ${String(err)}`);
+  }
+
+  if (res.status === 401) {
+    invalidatePrognosisToken();
+    throw new PrognosisUpstreamError('token rejected (401)');
+  }
+  if (res.status === 404) return null;
+  if (!res.ok) throw new PrognosisUpstreamError(`HTTP ${res.status}`);
+
+  const rawBody: unknown = await res.json();
+  const record = unwrapBody(rawBody);
+  if (!record || Object.keys(record).length === 0) return null;
+
+  const str = (keys: string[]) => {
+    for (const k of keys) {
+      const v = record[k];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+    return '';
+  };
+  const num = (keys: string[]) => {
+    for (const k of keys) {
+      const v = record[k];
+      if (typeof v === 'number') return v;
+      if (typeof v === 'string' && v.trim()) { const n = parseInt(v, 10); if (!isNaN(n)) return n; }
+    }
+    return 0;
+  };
+
+  const resetRaw = str(['resetDate', 'ResetDate', 'reset_date', 'PeriodEndDate', 'EndDate']);
+  const resetDate = resetRaw ? (() => { const d = new Date(resetRaw); return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0]; })() : null;
+
+  logger.info('prognosis.wellness.benefit', { memberRef, status: res.status });
+
+  return {
+    planType: str(['planType', 'PlanType', 'plan_type', 'PlanName', 'Member_Plan']),
+    sessionLimit: num(['sessionLimit', 'SessionLimit', 'session_limit', 'sessionsPerMonth', 'MonthlyLimit']),
+    sessionsUsed: num(['sessionsUsed', 'SessionsUsed', 'sessions_used', 'UsedSessions']),
+    sessionsRemaining: num(['sessionsRemaining', 'SessionsRemaining', 'sessions_remaining', 'RemainingSession']),
+    resetDate,
+    status: str(['status', 'Status', 'BenefitStatus', 'MemberStatus']) || 'ACTIVE',
+  };
+}
+
 // ─── Enrollee bio data ────────────────────────────────────────────────────────
 
 export type EnrolleeBioData = {
