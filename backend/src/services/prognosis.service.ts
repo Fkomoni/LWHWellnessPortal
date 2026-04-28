@@ -634,11 +634,15 @@ export async function generatePrognosisSessionOtp(
   }
 
   if (!res.ok) {
+    logger.error('prognosis.otp.error', { memberRef, providerCode, httpStatus: res.status, body: rawBody });
     throw new PrognosisUpstreamError(`HTTP ${res.status}`);
   }
 
   const record = unwrapBody(rawBody);
-  if (!record) throw new PrognosisUpstreamError('unexpected OTP response shape');
+  if (!record) {
+    logger.error('prognosis.otp.error', { memberRef, providerCode, httpStatus: res.status, body: rawBody, reason: 'unexpected shape' });
+    throw new PrognosisUpstreamError('unexpected OTP response shape');
+  }
 
   const str = (keys: string[]) => {
     for (const k of keys) {
