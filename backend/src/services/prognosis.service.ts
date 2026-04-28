@@ -332,23 +332,16 @@ function extractGym(raw: unknown): PrognosisGym | null {
   };
 }
 
-/**
- * Returns the list of gyms/spas covered under a Prognosis scheme.
- * Throws PrognosisUpstreamError on network/auth failures.
- * Returns [] when Prognosis returns an empty list (valid — no gyms for that scheme).
- */
-export async function getGymsByScheme(schemeId: string): Promise<PrognosisGym[]> {
-  let token: string;
-  try {
-    token = await getPrognosisToken();
-  } catch (err) {
-    if (err instanceof PrognosisUpstreamError) throw err;
-    throw new PrognosisUpstreamError(String(err));
-  }
+const INACTIVE_GYM_PATTERN = /suspended|terminated|closed/i;
 
+async function fetchGymPage(
+  token: string,
+  schemeId: string,
+  minimumId: number,
+): Promise<{ records: unknown[]; totalRecord: number }> {
   const url =
     `${env.PROGNOSIS_API_URL}/api/ListValues/GetGeneralGymandSpaByPlanCode` +
-    `?SchemeID=${encodeURIComponent(schemeId)}&MinimumID=0&NoOfRecords=100&pageSize=0`;
+    `?SchemeID=${encodeURIComponent(schemeId)}&MinimumID=${minimumId}&NoOfRecords=100&pageSize=0`;
 
   let res: Response;
   try {
@@ -370,22 +363,79 @@ export async function getGymsByScheme(schemeId: string): Promise<PrognosisGym[]>
   }
 
   const rawBody: unknown = await res.json();
-
   const records = unwrapList(rawBody);
 
-  logger.info('prognosis.gyms', {
-    schemeId,
-    status: res.status,
-    bodyKeys: typeof rawBody === 'object' && rawBody !== null ? Object.keys(rawBody as object) : typeof rawBody,
-    recordCount: records.length,
-    firstRecordKeys: records.length > 0 && typeof records[0] === 'object' && records[0] !== null
-      ? Object.keys(records[0] as object)
-      : null,
-  });
+  let totalRecord = 0;
+  if (typeof rawBody === 'object' && rawBody !== null) {
+    const env2 = rawBody as Record<string, unknown>;
+    if (typeof env2['totalRecord'] === 'number') totalRecord = env2['totalRecord'];
+  }
 
-  if (records.length === 0) {
+  return { records, totalRecord };
+}
+
+/**
+ * Returns all gyms/spas covered under a Prognosis scheme, paginating until
+ * every record is fetched. Gyms with Suspended/Terminated/Closed in their
+ * name are excluded. Throws PrognosisUpstreamError on network/auth failures.
+ */
+export async function getGymsByScheme(schemeId: string): Promise<PrognosisGym[]> {
+  let token: string;
+  try {
+    token = await getPrognosisToken();
+  } catch (err) {
+    if (err instanceof PrognosisUpstreamError) throw err;
+    throw new PrognosisUpstreamError(String(err));
+  }
+
+  const allRecords: unknown[] = [];
+  let minimumId = 0;
+  let totalRecord = 0;
+  const MAX_PAGES = 20;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const result = await fetchGymPage(token, schemeId, minimumId);
+
+    if (page === 0) {
+      totalRecord = result.totalRecord;
+      logger.info('prognosis.gyms', {
+        schemeId,
+        totalRecord,
+        firstRecordKeys: result.records.length > 0 && typeof result.records[0] === 'object' && result.records[0] !== null
+          ? Object.keys(result.records[0] as object)
+          : null,
+      });
+    }
+
+    allRecords.push(...result.records);
+
+    if (result.records.length === 0) break;
+
+    // Check if we've fetched everything
+    if (totalRecord > 0 && allRecords.length >= totalRecord) break;
+
+    // Advance cursor using last record's provider_id
+    const last = result.records[result.records.length - 1];
+    if (typeof last === 'object' && last !== null) {
+      const lastId = (last as Record<string, unknown>)['provider_id'];
+      if (typeof lastId === 'number' && lastId > minimumId) {
+        minimumId = lastId;
+      } else {
+        break; // no valid cursor — stop to avoid infinite loop
+      }
+    } else {
+      break;
+    }
+  }
+
+  logger.info('prognosis.gyms: pagination complete', { schemeId, totalFetched: allRecords.length, totalRecord });
+
+  if (allRecords.length === 0) {
     logger.warn('prognosis.gyms: empty list or unrecognised shape', { schemeId });
   }
 
-  return records.map(extractGym).filter((g): g is PrognosisGym => g !== null);
+  return allRecords
+    .map(extractGym)
+    .filter((g): g is PrognosisGym => g !== null)
+    .filter((g) => !INACTIVE_GYM_PATTERN.test(g.gymName));
 }
