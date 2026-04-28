@@ -1,4 +1,6 @@
 import { Router, Response } from 'express';
+import { OtpPurpose, OtpGeneratedBy } from '@prisma/client';
+import { hashOTP } from '../utils/crypto';
 import { db } from '../config/database';
 import { requireAuth, requireRole, AuthRequest } from '../middleware/auth';
 import { validate, validateQuery } from '../middleware/validate';
@@ -8,7 +10,7 @@ import { generateSessionOTP } from '../services/otp.service';
 import { logAudit } from '../services/audit.service';
 import { createInAppNotification } from '../services/notification.service';
 import { initializePayment, verifyPayment, getAllPlans } from '../services/payment.service';
-import { getGymsByScheme, getWellnessBenefit, PrognosisUpstreamError } from '../services/prognosis.service';
+import { getGymsByScheme, getWellnessBenefit, generatePrognosisSessionOtp, PrognosisUpstreamError } from '../services/prognosis.service';
 import { getWeekBoundaries, getNextWeekStart, calculateWeeklyLimit } from '../utils/sessions';
 import { logger } from '../utils/logger';
 import { generateSessionOtpSchema, rateGymSchema, paginationSchema } from '../validators/member.validator';
@@ -143,24 +145,22 @@ router.post(
     const [member, gym] = await Promise.all([
       db.member.findUnique({
         where: { id: memberId },
-        select: { phone: true, email: true, firstName: true, sessionsPerMonth: true, isActive: true },
+        select: { phone: true, memberRef: true, sessionsPerMonth: true, isActive: true },
       }),
       db.provider.findUnique({ where: { gymCode }, select: { id: true, gymName: true, status: true } }),
     ]);
 
     if (!member?.isActive) { res.status(403).json({ error: 'Account inactive', code: 'ACCOUNT_INACTIVE' }); return; }
-    if (!gym || gym.status !== 'ACTIVE') { res.status(404).json({ error: 'Gym not found or inactive', code: 'GYM_NOT_FOUND' }); return; }
+    if (!gym || gym.status !== 'ACTIVE') {
+      res.status(404).json({ error: 'Gym not found or not registered in the portal', code: 'GYM_NOT_FOUND' });
+      return;
+    }
 
-    // Weekly limit check — count confirmed sessions in current Sun–Sat week
+    // Fast weekly pre-check from local DB — avoids unnecessary Prognosis call
     const { start: weekStart, end: weekEnd } = getWeekBoundaries();
     const weeklyUsed = await db.session.count({
-      where: {
-        memberId,
-        sessionDate: { gte: weekStart, lte: weekEnd },
-        status: { not: 'CANCELLED' },
-      },
+      where: { memberId, sessionDate: { gte: weekStart, lte: weekEnd }, status: { not: 'CANCELLED' } },
     });
-
     if (weeklyUsed >= member.sessionsPerMonth) {
       const nextSunday = getNextWeekStart();
       res.status(400).json({
@@ -171,17 +171,56 @@ router.post(
       return;
     }
 
-    const { otp, expiresAt } = await generateSessionOTP(memberId, member.phone, ip);
+    // Generate OTP via Prognosis — no local fallback (OTP must deduct Prognosis benefit)
+    let prognosisResult: Awaited<ReturnType<typeof generatePrognosisSessionOtp>>;
+    try {
+      prognosisResult = await generatePrognosisSessionOtp(member.memberRef, gymCode);
+    } catch (err) {
+      if (err instanceof PrognosisUpstreamError) {
+        await logAudit({ userId: memberId, userRole: 'ENROLLEE', action: 'SESSION_OTP_GENERATE', resource: 'member', resourceId: gym.id, ipAddress: ip, status: 'FAILURE', details: { reason: 'UPSTREAM_ERROR', gymCode } });
+        res.status(503).json({ error: 'We are currently unable to generate an OTP. Please try again later.', code: 'UPSTREAM_ERROR' });
+        return;
+      }
+      throw err;
+    }
+
+    if (!prognosisResult) {
+      res.status(400).json({ error: 'No sessions remaining on your benefit. Please contact Leadway Health.', code: 'SESSION_LIMIT_REACHED' });
+      return;
+    }
+
+    // Hash Prognosis OTP and store — provider validates against this hash
+    const expiresAt = prognosisResult.expiresAt
+      ? new Date(prognosisResult.expiresAt)
+      : new Date(Date.now() + 2 * 60 * 60 * 1000);
+    const otpHash = await hashOTP(prognosisResult.otp);
+
+    const otpRecord = await db.otpRecord.create({
+      data: {
+        memberId,
+        phone: member.phone ?? '',
+        otpHash,
+        purpose: OtpPurpose.SESSION,
+        generatedBy: OtpGeneratedBy.MEMBER,
+        expiresAt,
+        ipAddress: ip,
+      },
+    });
+
+    await db.session.create({
+      data: { memberId, providerId: gym.id, sessionOtpId: otpRecord.id, generatedBy: OtpGeneratedBy.MEMBER, status: 'PENDING' },
+    });
 
     await logAudit({
       userId: memberId, userRole: 'ENROLLEE', action: 'SESSION_OTP_GENERATE',
       resource: 'member', resourceId: gym.id, ipAddress: ip,
-      status: 'SUCCESS', details: { gymCode, gymName: gym.gymName },
+      status: 'SUCCESS', details: { gymCode, gymName: prognosisResult.gymName || gym.gymName },
     });
 
     res.json({
-      otp, expiresAt,
-      gym: { name: gym.gymName, code: gymCode },
+      otp: prognosisResult.otp,
+      expiresAt: expiresAt.toISOString(),
+      gym: { name: prognosisResult.gymName || gym.gymName, code: gymCode },
       message: 'Show this OTP to the gym receptionist. Valid for 2 hours.',
     });
   },

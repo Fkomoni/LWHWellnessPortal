@@ -520,3 +520,101 @@ export async function getGymsByScheme(schemeId: string): Promise<PrognosisGym[]>
     .filter((g): g is PrognosisGym => g !== null)
     .filter((g) => !INACTIVE_GYM_PATTERN.test(g.gymName));
 }
+
+// ─── Session OTP generation ───────────────────────────────────────────────────
+
+export type PrognosisOtpResponse = {
+  otp: string;
+  memberRef: string;
+  memberName: string;
+  providerCode: string;
+  gymName: string;
+  expiresAt: string;
+  sessionsRemaining: number;
+};
+
+/**
+ * Generates a session OTP via Prognosis. The OTP depletes the member's
+ * annual benefit counter on the Prognosis side.
+ *
+ * Returns null when Prognosis reports BENEFIT_EXHAUSTED (no sessions left).
+ * Throws PrognosisUpstreamError on network/auth failures — callers must return
+ * 503 and NOT fall back to locally-generated OTPs.
+ */
+export async function generatePrognosisSessionOtp(
+  memberRef: string,
+  providerCode: string,
+): Promise<PrognosisOtpResponse | null> {
+  let token: string;
+  try {
+    token = await getPrognosisToken();
+  } catch (err) {
+    if (err instanceof PrognosisUpstreamError) throw err;
+    throw new PrognosisUpstreamError(String(err));
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(`${env.PROGNOSIS_API_URL}/api/WellnessBenefit/GenerateSessionOtp`, {
+      method: 'POST',
+      headers: { ...COMMON_HEADERS, Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ MemberRef: memberRef, ProviderCode: providerCode }),
+    });
+  } catch (err) {
+    throw new PrognosisUpstreamError(`network error: ${String(err)}`);
+  }
+
+  if (res.status === 401) {
+    invalidatePrognosisToken();
+    throw new PrognosisUpstreamError('token rejected (401)');
+  }
+
+  const rawBody: unknown = await res.json();
+
+  // Detect benefit-exhausted failure before checking res.ok
+  if (typeof rawBody === 'object' && rawBody !== null) {
+    const obj = rawBody as Record<string, unknown>;
+    if (
+      obj['success'] === false ||
+      obj['code'] === 'BENEFIT_EXHAUSTED' ||
+      (typeof obj['error'] === 'string' && /no sessions remaining/i.test(obj['error'] as string))
+    ) {
+      logger.info('prognosis.otp: benefit exhausted', { memberRef, providerCode, body: obj['code'] ?? obj['error'] });
+      return null;
+    }
+  }
+
+  if (!res.ok) {
+    throw new PrognosisUpstreamError(`HTTP ${res.status}`);
+  }
+
+  const record = unwrapBody(rawBody);
+  if (!record) throw new PrognosisUpstreamError('unexpected OTP response shape');
+
+  const str = (keys: string[]) => {
+    for (const k of keys) {
+      const v = record[k];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+    return '';
+  };
+
+  const otp = str(['otp', 'OTP', 'Otp', 'otpCode', 'OtpCode', 'OTPCode']);
+  if (!otp) throw new PrognosisUpstreamError('OTP field missing in response');
+
+  const expiresAt = str(['expiresAt', 'ExpiresAt', 'expires_at', 'ExpiryTime', 'expiry']);
+  const sessionsRemainingRaw = record['sessionsRemaining'] ?? record['SessionsRemaining'] ?? record['sessions_remaining'];
+  const sessionsRemaining = typeof sessionsRemainingRaw === 'number' ? sessionsRemainingRaw : 0;
+
+  logger.info('prognosis.otp: generated', { memberRef, providerCode, expiresAt });
+
+  return {
+    otp,
+    memberRef: str(['memberRef', 'MemberRef', 'member_ref']),
+    memberName: str(['memberName', 'MemberName', 'member_name', 'MemberFullName']),
+    providerCode: str(['providerCode', 'ProviderCode', 'provider_code']) || providerCode,
+    gymName: str(['gymName', 'GymName', 'gym_name', 'ProviderName', 'providerName']),
+    expiresAt,
+    sessionsRemaining,
+  };
+}
