@@ -9,8 +9,8 @@ import OTPInput from '../components/ui/OTPInput';
 import { Dumbbell, UserCircle, Shield, ChevronRight, ArrowLeft, Loader2 } from 'lucide-react';
 import apiClient from '../lib/apiClient';
 
-// ENROLLEE: Member ID + DOB. PROVIDER: email + password. ADVOCATE: phone + OTP.
-type Step = 'role' | 'dob' | 'email-password' | 'phone' | 'otp';
+// ENROLLEE: Member ID + DOB. PROVIDER: email + password [+ OTP]. ADVOCATE: phone + OTP.
+type Step = 'role' | 'dob' | 'email-password' | 'provider-otp' | 'phone' | 'otp';
 
 const roles: Array<{ value: Role; icon: React.ReactNode; label: string; sub: string; description: string }> = [
   {
@@ -56,6 +56,7 @@ export default function Login() {
   // PROVIDER fields
   const [providerEmail, setProviderEmail] = useState('');
   const [providerPassword, setProviderPassword] = useState('');
+  const [providerOtp, setProviderOtp] = useState('');
 
   // ADVOCATE fields
   const [phone, setPhone] = useState('');
@@ -98,19 +99,26 @@ export default function Login() {
   // ── PROVIDER: Email + Password via Prognosis ─────────────────────────────
 
   const providerLoginMutation = useMutation({
-    mutationFn: async ({ email, password }: { email: string; password: string }) => {
-      const { data } = await apiClient.post('/auth/provider-login', { email, password });
-      return data as { accessToken: string; user: User };
+    mutationFn: async ({ email, password, otp }: { email: string; password: string; otp?: string }) => {
+      const { data } = await apiClient.post('/auth/provider-login', { email, password, ...(otp ? { otp } : {}) });
+      return data as { accessToken?: string; user?: User; needsOtp?: boolean; message?: string };
     },
     onSuccess: (data) => {
-      setAuth(data.user, data.accessToken);
-      toast.success(`Welcome, ${data.user.gymName}!`);
-      navigate(redirectMap[data.user.role]);
+      if (data.needsOtp) {
+        setStep('provider-otp');
+        toast.success(data.message ?? 'OTP sent to your registered contact.');
+        return;
+      }
+      if (data.accessToken && data.user) {
+        setAuth(data.user, data.accessToken);
+        toast.success(`Welcome, ${data.user.gymName}!`);
+        navigate(redirectMap[data.user.role]);
+      }
     },
     onError: (err) => {
       if (axios.isAxiosError(err)) {
         const code = err.response?.data?.code as string | undefined;
-        if (code === 'INVALID_CREDENTIALS') toast.error('Invalid email or password. Please try again.');
+        if (code === 'INVALID_CREDENTIALS') toast.error(err.response?.data?.error ?? 'Invalid credentials. Please try again.');
         else if (code === 'PROVIDER_NOT_FOUND') toast.error('Gym not registered in the portal. Contact Leadway Health.');
         else if (code === 'UPSTREAM_ERROR') toast.error('Authentication service temporarily unavailable.');
         else toast.error(err.response?.data?.error ?? 'Login failed');
@@ -123,6 +131,11 @@ export default function Login() {
   const handleProviderLogin = () => {
     if (!providerEmail.trim() || !providerPassword) return;
     providerLoginMutation.mutate({ email: providerEmail.trim(), password: providerPassword });
+  };
+
+  const handleProviderOtp = () => {
+    if (providerOtp.length !== 5) return;
+    providerLoginMutation.mutate({ email: providerEmail.trim(), password: providerPassword, otp: providerOtp });
   };
 
   // ── Provider / Advocate: Phone + OTP ─────────────────────────────────────
@@ -403,6 +416,53 @@ export default function Login() {
                 <p className="text-center text-white/30 text-xs">
                   Use the email and password provided by Leadway Health
                 </p>
+              </div>
+            </div>
+          )}
+
+          {/* ── PROVIDER: OTP verification ── */}
+          {step === 'provider-otp' && selectedRoleMeta && (
+            <div className="animate-fade-in">
+              <button
+                onClick={() => { setStep('email-password'); setProviderOtp(''); }}
+                className="flex items-center gap-1.5 text-white/50 hover:text-white text-sm mb-8 transition-colors"
+              >
+                <ArrowLeft size={14} /> Back
+              </button>
+              <div className="text-center mb-8">
+                <div className="inline-flex p-3 bg-brand-orange/10 rounded-xl text-brand-orange mb-4">
+                  {selectedRoleMeta.icon}
+                </div>
+                <h2 className="text-xl font-bold text-white">Enter Your OTP</h2>
+                <p className="text-white/50 text-sm mt-1">
+                  A 5-digit code was sent to <span className="text-white font-mono">{providerEmail}</span>
+                </p>
+                <p className="text-white/30 text-xs mt-2">Check your registered email or phone number</p>
+              </div>
+              <div className="space-y-6">
+                <OTPInput value={providerOtp} onChange={setProviderOtp} disabled={providerLoginMutation.isPending} length={5} />
+                <button
+                  onClick={handleProviderOtp}
+                  disabled={providerLoginMutation.isPending || providerOtp.length !== 5}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-brand-red
+                             text-white font-semibold rounded-xl hover:bg-red-700 transition-colors
+                             disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                >
+                  {providerLoginMutation.isPending ? (
+                    <><Loader2 size={16} className="animate-spin" /> Verifying...</>
+                  ) : (
+                    'Verify & Sign In'
+                  )}
+                </button>
+                <div className="text-center">
+                  <button
+                    onClick={handleProviderLogin}
+                    disabled={providerLoginMutation.isPending}
+                    className="text-white/40 hover:text-white/70 text-xs transition-colors disabled:opacity-30"
+                  >
+                    Didn't receive it? Resend OTP
+                  </button>
+                </div>
               </div>
             </div>
           )}

@@ -578,21 +578,26 @@ export type PrognosisProviderAuth = {
 };
 
 /**
- * Authenticates a gym provider against Prognosis.
- * Returns null when credentials are invalid; throws PrognosisUpstreamError on
- * network/service failures so callers can return 503 appropriately.
+ * Step 1 (otp omitted): Prognosis validates credentials and sends OTP to the
+ *   provider's registered contact. Returns 'OTP_REQUIRED' — caller should ask
+ *   the user to enter the code.
+ * Step 2 (otp provided): Completes login and returns providerCode + gymName.
+ * Already-authenticated-today: step 1 may return providerCode directly.
+ * Returns null on wrong credentials; throws PrognosisUpstreamError on failures.
  */
 export async function authenticateProvider(
   email: string,
   password: string,
-): Promise<PrognosisProviderAuth | null> {
-  logger.info('prognosis.provider.login.attempt', { email });
+  otp?: string,
+): Promise<PrognosisProviderAuth | null | 'OTP_REQUIRED'> {
+  logger.info('prognosis.provider.login.attempt', { email, hasOtp: !!otp });
 
   let res: Response;
   try {
     const url = new URL(`${env.PROGNOSIS_API_URL}/api/WellnessBenefit/WellnessProviderLogIn`);
     url.searchParams.set('userName', email);
     url.searchParams.set('password', password);
+    if (otp) url.searchParams.set('otp', otp);
     res = await fetch(url.toString(), {
       method: 'POST',
       headers: COMMON_HEADERS,
@@ -621,11 +626,20 @@ export async function authenticateProvider(
     throw new PrognosisUpstreamError(`HTTP ${res.status}`);
   }
 
-  // Prognosis wraps failures in HTTP 200 with { status: 500, result: null }
+  // Prognosis returns HTTP 200 with { status: 500, result: null } for two cases:
+  // - Wrong credentials (status 400/401 sometimes maps here too)
+  // - OTP not yet provided (NullReferenceException on their side) — credentials
+  //   ARE valid and OTP was sent to provider's registered contact.
+  // Distinguish: if no OTP was submitted this is the "OTP sent" signal;
+  // if OTP was submitted it means wrong OTP / bad credentials.
   if (typeof rawBody === 'object' && rawBody !== null) {
     const obj = rawBody as Record<string, unknown>;
     if (obj['result'] === null && (obj['status'] === 500 || obj['status'] === 400)) {
-      logger.warn('prognosis.provider.login: invalid credentials or account not found', { email, body: obj['ErrorMessage'] });
+      if (!otp) {
+        logger.info('prognosis.provider.login: OTP sent to provider', { email });
+        return 'OTP_REQUIRED';
+      }
+      logger.warn('prognosis.provider.login: invalid OTP or credentials', { email });
       return null;
     }
   }

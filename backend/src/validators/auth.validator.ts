@@ -20,6 +20,7 @@ export const verifyOtpSchema = z.object({
 export const providerLoginSchema = z.object({
   email: z.string().email('Enter a valid email address').toLowerCase(),
   password: z.string().min(1, 'Password is required').max(128),
+  otp: z.string().length(5).regex(/^\d{5}$/, 'OTP must be 5 digits').optional(),
 });
 
 export const refreshTokenSchema = z.object({

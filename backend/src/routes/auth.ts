@@ -249,13 +249,13 @@ router.post(
   dobAuthRateLimiter,
   validate(providerLoginSchema),
   async (req: Request, res: Response): Promise<void> => {
-    const { email, password } = req.body as { email: string; password: string };
+    const { email, password, otp } = req.body as { email: string; password: string; otp?: string };
     const ip = req.ip ?? 'unknown';
     const userAgent = req.headers['user-agent'] ?? '';
 
     let providerAuth: Awaited<ReturnType<typeof authenticateProvider>>;
     try {
-      providerAuth = await authenticateProvider(email, password);
+      providerAuth = await authenticateProvider(email, password, otp);
     } catch (err) {
       await logAudit({ action: 'PROVIDER_LOGIN', resource: 'auth', ipAddress: ip, status: 'FAILURE', details: { reason: 'UPSTREAM_ERROR', email } });
       if (err instanceof PrognosisUpstreamError) {
@@ -266,9 +266,15 @@ router.post(
       return;
     }
 
+    // Credentials valid but OTP required — Prognosis has sent the code
+    if (providerAuth === 'OTP_REQUIRED') {
+      res.status(200).json({ needsOtp: true, message: 'A 5-digit OTP has been sent to your registered email or phone. Enter it to continue.' });
+      return;
+    }
+
     if (!providerAuth) {
       await logAudit({ action: 'PROVIDER_LOGIN', resource: 'auth', ipAddress: ip, userAgent, status: 'FAILURE', details: { reason: 'INVALID_CREDENTIALS', email } });
-      res.status(401).json({ error: 'Invalid email or password', code: 'INVALID_CREDENTIALS' });
+      res.status(401).json({ error: otp ? 'Invalid OTP. Please check and try again.' : 'Invalid email or password', code: 'INVALID_CREDENTIALS' });
       return;
     }
 
