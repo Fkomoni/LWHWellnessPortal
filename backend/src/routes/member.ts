@@ -62,16 +62,21 @@ router.get('/dashboard', async (req: AuthRequest, res: Response): Promise<void> 
     logger.warn('dashboard: wellness benefit fetch failed', { cause: String(benefitResult.reason) });
   }
 
-  let nearbyGyms: unknown[] = gymResult.status === 'fulfilled' ? gymResult.value : [];
-  if (gymResult.status === 'rejected') {
-    logger.warn('dashboard: Prognosis gym fetch failed, using local DB', { cause: String(gymResult.reason) });
-  }
-  if (nearbyGyms.length === 0) {
-    nearbyGyms = await db.provider.findMany({
-      where: { status: 'ACTIVE' },
-      select: { id: true, gymName: true, location: true, lga: true, latitude: true, longitude: true, amenities: true, hours: true },
-      take: 20,
-    });
+  const localProviders = await db.provider.findMany({
+    where: { status: 'ACTIVE' },
+    select: { gymCode: true, gymName: true, location: true, lga: true, latitude: true, longitude: true, amenities: true, hours: true },
+  });
+  const localCodeSet = new Set(localProviders.map((p) => p.gymCode));
+
+  let nearbyGyms: unknown[];
+  if (gymResult.status === 'fulfilled' && gymResult.value.length > 0) {
+    // Intersect Prognosis plan gyms with local DB
+    nearbyGyms = gymResult.value.filter((g) => localCodeSet.has(g.gymCode));
+  } else {
+    if (gymResult.status === 'rejected') {
+      logger.warn('dashboard: Prognosis gym fetch failed, using local DB', { cause: String(gymResult.reason) });
+    }
+    nearbyGyms = localProviders;
   }
 
   // Compute weekly limit — Prognosis annual figure is source of truth
@@ -263,7 +268,7 @@ router.post('/rate-gym', validate(rateGymSchema), async (req: AuthRequest, res: 
   res.json({ message: 'Rating submitted. Thank you!' });
 });
 
-// GET /api/member/gyms — gym finder (Prognosis live data, local-DB fallback)
+// GET /api/member/gyms — intersection of Prognosis plan gyms and local DB providers
 router.get('/gyms', async (req: AuthRequest, res: Response): Promise<void> => {
   const memberId = req.user!.sub;
 
@@ -272,10 +277,20 @@ router.get('/gyms', async (req: AuthRequest, res: Response): Promise<void> => {
     select: { schemeId: true },
   });
 
+  // Always fetch local active gym codes — used for intersection and fallback
+  const localProviders = await db.provider.findMany({
+    where: { status: 'ACTIVE' },
+    select: { gymCode: true, gymName: true, location: true, address: true, lga: true, state: true, latitude: true, longitude: true, amenities: true, hours: true },
+    orderBy: { gymName: 'asc' },
+  });
+  const localCodeSet = new Set(localProviders.map((p) => p.gymCode));
+
   if (member?.schemeId) {
     try {
       const prognosisGyms = await getGymsByScheme(member.schemeId);
-      res.json({ gyms: prognosisGyms, source: 'prognosis' });
+      // Only gyms present in both Prognosis (on member's plan) AND local DB
+      const gyms = prognosisGyms.filter((g) => localCodeSet.has(g.gymCode));
+      res.json({ gyms, source: 'prognosis' });
       return;
     } catch (err) {
       if (!(err instanceof PrognosisUpstreamError)) throw err;
@@ -283,16 +298,8 @@ router.get('/gyms', async (req: AuthRequest, res: Response): Promise<void> => {
     }
   }
 
-  // Fallback: return locally seeded providers
-  const gyms = await db.provider.findMany({
-    where: { status: 'ACTIVE' },
-    select: {
-      id: true, gymCode: true, gymName: true, location: true, address: true,
-      lga: true, state: true, latitude: true, longitude: true, amenities: true, hours: true,
-    },
-    orderBy: { gymName: 'asc' },
-  });
-  res.json({ gyms, source: 'local' });
+  // Fallback: local DB only
+  res.json({ gyms: localProviders, source: 'local' });
 });
 
 // GET /api/member/notifications
