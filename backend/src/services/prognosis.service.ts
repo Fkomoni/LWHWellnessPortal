@@ -621,6 +621,15 @@ export async function authenticateProvider(
     throw new PrognosisUpstreamError(`HTTP ${res.status}`);
   }
 
+  // Prognosis wraps failures in HTTP 200 with { status: 500, result: null }
+  if (typeof rawBody === 'object' && rawBody !== null) {
+    const obj = rawBody as Record<string, unknown>;
+    if (obj['result'] === null && (obj['status'] === 500 || obj['status'] === 400)) {
+      logger.warn('prognosis.provider.login: invalid credentials or account not found', { email, body: obj['ErrorMessage'] });
+      return null;
+    }
+  }
+
   const record = unwrapBody(rawBody);
   if (!record) return null;
 
