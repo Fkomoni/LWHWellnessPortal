@@ -210,7 +210,7 @@ router.post(
     });
 
     await db.session.create({
-      data: { memberId, providerId: gym.id, sessionOtpId: otpRecord.id, generatedBy: OtpGeneratedBy.MEMBER, status: 'PENDING' },
+      data: { memberId, providerId: gym.id, sessionOtpId: otpRecord.id, generatedBy: OtpGeneratedBy.MEMBER, status: 'PENDING', otpCode: prognosisResult.otp },
     });
 
     await logAudit({

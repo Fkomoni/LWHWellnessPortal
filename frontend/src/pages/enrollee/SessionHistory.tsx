@@ -43,6 +43,7 @@ export default function EnrolleeSessionHistory() {
               <th className="text-left text-xs font-semibold text-grey-4 uppercase tracking-wider px-5 py-3">Gym</th>
               <th className="text-left text-xs font-semibold text-grey-4 uppercase tracking-wider px-3 py-3 hidden sm:table-cell">Date</th>
               <th className="text-left text-xs font-semibold text-grey-4 uppercase tracking-wider px-3 py-3">Status</th>
+              <th className="text-left text-xs font-semibold text-grey-4 uppercase tracking-wider px-3 py-3 hidden sm:table-cell">OTP</th>
               <th className="text-left text-xs font-semibold text-grey-4 uppercase tracking-wider px-3 py-3 hidden md:table-cell">WhatsApp</th>
               <th className="text-left text-xs font-semibold text-grey-4 uppercase tracking-wider px-3 py-3 hidden md:table-cell">Rating</th>
             </tr>
@@ -85,6 +86,13 @@ export default function EnrolleeSessionHistory() {
                       <span className="badge-confirmed">Confirmed</span>
                     ) : (
                       <span className="badge-pending">Pending</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 hidden sm:table-cell">
+                    {session.otpCode && session.status === 'PENDING' ? (
+                      <span className="font-mono font-bold text-brand-navy tracking-widest text-sm">{session.otpCode}</span>
+                    ) : (
+                      <span className="text-xs text-grey-3">—</span>
                     )}
                   </td>
                   <td className="px-3 py-3 hidden md:table-cell">
