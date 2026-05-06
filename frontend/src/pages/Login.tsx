@@ -9,8 +9,9 @@ import OTPInput from '../components/ui/OTPInput';
 import { Dumbbell, UserCircle, Shield, ChevronRight, ArrowLeft, Loader2 } from 'lucide-react';
 import apiClient from '../lib/apiClient';
 
-// ENROLLEE uses Member ID + DOB; Provider/Advocate use phone + OTP.
-type Step = 'role' | 'dob' | 'phone' | 'otp';
+// ENROLLEE → Member ID + DOB; PROVIDER → email + password (Prognosis-backed);
+// ADVOCATE → phone + OTP.
+type Step = 'role' | 'dob' | 'credentials' | 'phone' | 'otp';
 
 const roles: Array<{ value: Role; icon: React.ReactNode; label: string; sub: string; description: string }> = [
   {
@@ -53,7 +54,11 @@ export default function Login() {
   const [memberRef, setMemberRef] = useState('');
   const [dob, setDob] = useState('');
 
-  // Provider / Advocate fields
+  // PROVIDER fields
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  // ADVOCATE fields
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [devOtp, setDevOtp] = useState<string | null>(null);
@@ -91,7 +96,56 @@ export default function Login() {
     loginDobMutation.mutate({ memberRef: memberRef.trim(), dob });
   };
 
-  // ── Provider / Advocate: Phone + OTP ─────────────────────────────────────
+  // ── PROVIDER: Email + Password (authenticated upstream by Prognosis) ─────
+
+  const providerLoginMutation = useMutation({
+    mutationFn: async ({ email, password }: { email: string; password: string }) => {
+      const { data } = await apiClient.post('/auth/provider-login', { email, password });
+      return data as {
+        token: string;
+        expires_in: number;
+        provider: {
+          id: string;
+          email: string;
+          name: string;
+          role: 'provider';
+          facility: string;
+          phone: string | null;
+        };
+      };
+    },
+    onSuccess: (data) => {
+      const u: User = {
+        id: data.provider.id,
+        firstName: data.provider.name?.split(' ')[0] ?? data.provider.name ?? 'Provider',
+        lastName: data.provider.name?.split(' ').slice(1).join(' ') ?? '',
+        memberRef: data.provider.email,
+        role: 'PROVIDER',
+      };
+      setAuth(u, data.token);
+      toast.success(`Welcome, ${data.provider.name || data.provider.email}`);
+      navigate(redirectMap.PROVIDER);
+    },
+    onError: (err) => {
+      if (axios.isAxiosError(err)) {
+        const code = err.response?.data?.code as string | undefined;
+        if (code === 'RATE_LIMIT_EXCEEDED') toast.error('Too many attempts. Please wait 15 minutes.');
+        else if (code === 'UPSTREAM_ERROR') toast.error('Authentication service temporarily unavailable. Please try again.');
+        else toast.error('Invalid email or password.');
+      } else {
+        toast.error('Network error. Please try again.');
+      }
+    },
+  });
+
+  const handleProviderLogin = () => {
+    const e = email.trim();
+    const p = password;
+    if (!e || !p) { toast.error('Enter email and password'); return; }
+    providerLoginMutation.mutate({ email: e, password: p });
+  };
+
+  // ── ADVOCATE: Phone + OTP ────────────────────────────────────────────────
 
   const requestOtpMutation = useMutation({
     mutationFn: async ({ phone, role }: { phone: string; role: Role }) => {
@@ -140,7 +194,9 @@ export default function Login() {
 
   const handleRoleSelect = (role: Role) => {
     setSelectedRole(role);
-    setStep(role === 'ENROLLEE' ? 'dob' : 'phone');
+    if (role === 'ENROLLEE') setStep('dob');
+    else if (role === 'PROVIDER') setStep('credentials');
+    else setStep('phone'); // ADVOCATE
   };
 
   const handleRequestOtp = () => {
@@ -304,7 +360,75 @@ export default function Login() {
             </div>
           )}
 
-          {/* ── Provider / Advocate: Phone entry ── */}
+          {/* ── PROVIDER: Email + Password ── */}
+          {step === 'credentials' && selectedRoleMeta && (
+            <div className="animate-fade-in">
+              <button
+                onClick={() => setStep('role')}
+                className="flex items-center gap-1.5 text-white/50 hover:text-white text-sm mb-8 transition-colors"
+              >
+                <ArrowLeft size={14} /> Back
+              </button>
+              <div className="text-center mb-8">
+                <div className="inline-flex p-3 bg-brand-orange/10 rounded-xl text-brand-orange mb-4">
+                  {selectedRoleMeta.icon}
+                </div>
+                <h2 className="text-xl font-bold text-white">{selectedRoleMeta.label} Login</h2>
+                <p className="text-white/50 text-sm mt-1">Sign in with your wellness provider credentials</p>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="doctor@clinic.com"
+                    onKeyDown={(e) => e.key === 'Enter' && handleProviderLogin()}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl
+                               text-white placeholder-white/30 text-sm focus:outline-none
+                               focus:border-brand-orange focus:bg-white/10 transition-all"
+                    autoComplete="username"
+                    maxLength={254}
+                    spellCheck={false}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleProviderLogin()}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl
+                               text-white placeholder-white/30 text-sm focus:outline-none
+                               focus:border-brand-orange focus:bg-white/10 transition-all"
+                    autoComplete="current-password"
+                    maxLength={256}
+                  />
+                </div>
+                <button
+                  onClick={handleProviderLogin}
+                  disabled={providerLoginMutation.isPending || !email.trim() || !password}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-brand-red
+                             text-white font-semibold rounded-xl hover:bg-red-700 transition-colors
+                             disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                >
+                  {providerLoginMutation.isPending ? (
+                    <><Loader2 size={16} className="animate-spin" /> Signing in...</>
+                  ) : (
+                    'Sign In'
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Advocate: Phone entry ── */}
           {step === 'phone' && selectedRoleMeta && (
             <div className="animate-fade-in">
               <button onClick={() => setStep('role')} className="flex items-center gap-1.5 text-white/50 hover:text-white text-sm mb-8 transition-colors">
