@@ -1,7 +1,21 @@
 import { Router, Request, Response } from 'express';
+import bcrypt from 'bcryptjs';
 import { db } from '../config/database';
-import { generateAuthOTP, verifyAuthOTP } from '../services/otp.service';
-import { signAccessToken, issueRefreshToken, rotateRefreshToken, revokeAllTokens } from '../services/jwt.service';
+import {
+  generateAuthOTP,
+  verifyAuthOTP,
+  generateProviderAuthOTP,
+  verifyProviderAuthOTP,
+} from '../services/otp.service';
+import { sendEmail, sendWhatsAppMessage } from '../services/notification.service';
+import {
+  signAccessToken,
+  signProviderAccessToken,
+  issueRefreshToken,
+  rotateRefreshToken,
+  revokeAllTokens,
+  PROVIDER_TOKEN_TTL_SECONDS,
+} from '../services/jwt.service';
 import { logAudit } from '../services/audit.service';
 import { validate } from '../middleware/validate';
 import { requireAuth, AuthRequest } from '../middleware/auth';
@@ -12,6 +26,8 @@ import { authenticateProvider } from '../services/prognosis.service';
 import { env } from '../config/env';
 import { generateSecureToken } from '../utils/crypto';
 import { Role } from '@prisma/client';
+
+const PROGNOSIS_MANAGED_MARKER = '!prognosis-managed!';
 
 const router = Router();
 

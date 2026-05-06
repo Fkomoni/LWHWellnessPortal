@@ -106,23 +106,35 @@ model Member {
 }
 
 model Provider {
-  id          String         @id @default(cuid())
-  gymCode     String         @unique
-  gymName     String
-  phone       String?        @unique
-  email       String?        @unique
-  location    String?
-  address     String?
-  lga         String
-  state       String         @default("Lagos")
-  latitude    Float?
-  longitude   Float?
-  hours       Json?          // { mon: "6am-10pm", ... }
-  amenities   String[]       // ["pool", "sauna", "classes", ...]
-  status      ProviderStatus @default(ACTIVE)
-  statusNote  String?        // reason for suspension
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id           String         @id @default(cuid())
+  prognosisId  String?        @unique // canonical id from Prognosis WellnessProviderLogIn
+  gymCode      String         @unique
+  gymName      String
+  name         String?        // display name returned by Prognosis (e.g. "Dr Jane Doe")
+  facility     String?        // facility/clinic name from Prognosis
+  phone        String?        @unique
+  email        String?        @unique
+  location     String?
+  address      String?
+  lga          String
+  state        String         @default("Lagos")
+  latitude     Float?
+  longitude    Float?
+  hours        Json?          // { mon: "6am-10pm", ... }
+  amenities    String[]       // ["pool", "sauna", "classes", ...]
+  status       ProviderStatus @default(ACTIVE)
+  statusNote   String?        // reason for suspension
+  // "!prognosis-managed!" marker means auth is delegated to Prognosis;
+  // any other value is a bcrypt hash for a local-only admin account.
+  passwordHash String         @default("!prognosis-managed!")
+  lastLoginAt  DateTime?
+  lastLoginIp  String?
+  // Daily 2FA: timestamp of the most recent successful PROVIDER_AUTH OTP.
+  // If this falls on the current UTC day, /provider-login skips OTP and mints
+  // a full session immediately.
+  lastOtpVerifiedAt DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
   sessions    Session[]
   claims      Claim[]
@@ -131,6 +143,7 @@ model Provider {
 
   @@index([gymCode])
   @@index([status])
+  @@index([prognosisId])
   @@map("providers")
 }
 
