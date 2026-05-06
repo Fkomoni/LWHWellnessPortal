@@ -269,15 +269,13 @@ router.post(
   },
 );
 
-// Provider has already verified an OTP today → no second factor required.
-function otpVerifiedToday(lastOtpVerifiedAt: Date | null): boolean {
+// Provider has verified an OTP within the last 24 hours → no second factor.
+// Rolling window from lastOtpVerifiedAt — NOT a calendar-day check, so a late
+// login one night doesn't immediately require another OTP a few hours later.
+const PROVIDER_OTP_VALIDITY_MS = 24 * 60 * 60 * 1000;
+function otpStillValid(lastOtpVerifiedAt: Date | null): boolean {
   if (!lastOtpVerifiedAt) return false;
-  const now = new Date();
-  return (
-    lastOtpVerifiedAt.getUTCFullYear() === now.getUTCFullYear() &&
-    lastOtpVerifiedAt.getUTCMonth() === now.getUTCMonth() &&
-    lastOtpVerifiedAt.getUTCDate() === now.getUTCDate()
-  );
+  return Date.now() - lastOtpVerifiedAt.getTime() < PROVIDER_OTP_VALIDITY_MS;
 }
 
 function maskEmail(email: string): string {
@@ -459,7 +457,7 @@ router.post(
     // Daily 2FA gate. If the provider already passed OTP today, mint a full
     // session token immediately. Otherwise generate an OTP, send it via email
     // and WhatsApp, and return a 'requiresOtp' response.
-    if (otpVerifiedToday(provider.lastOtpVerifiedAt)) {
+    if (otpStillValid(provider.lastOtpVerifiedAt)) {
       await logAudit({
         userId: provider.id,
         userRole: 'PROVIDER',
