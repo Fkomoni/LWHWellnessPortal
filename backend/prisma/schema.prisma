@@ -397,3 +397,105 @@ model WhatsAppMessage {
   @@index([phone])
   @@map("whatsapp_messages")
 }
+
+// ─── Staff prescription-tracking module ──────────────────────────────────
+
+enum StaffRole {
+  PHARMACY_OPS
+  CARE_MANAGER
+  ADMIN
+}
+
+enum PrescriptionStatus {
+  SENT_TO_PHARMACY
+  PICKED_UP
+  NOT_PICKED
+  AT_RISK
+  RE_ROUTING
+  CANCELLED
+  ESCALATED
+  FRAUD_FLAGGED
+}
+
+enum PrescriptionEventType {
+  CREATED
+  TRIGGER_SENT          // T+6h WhatsApp/email sent
+  RETRY_SENT            // smart retry
+  MEMBER_RESPONSE       // option chosen
+  STATUS_CHANGE
+  REROUTE_REQUESTED
+  CANCEL_REQUESTED
+  FRAUD_FLAG
+  DETAILS_RESENT
+  ESCALATED_TO_CALL_CENTER
+}
+
+model Staff {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  fullName      String
+  role          StaffRole @default(PHARMACY_OPS)
+  passwordHash  String    // bcrypt of system password
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  lastLoginIp   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  events        PrescriptionEvent[]
+
+  @@index([email])
+  @@map("staff")
+}
+
+model Prescription {
+  id                 String             @id @default(cuid())
+  prescriptionRef    String             @unique  // provider order id
+  memberRef          String             // enrollee id (Prognosis)
+  memberFirstName    String
+  memberLastName     String
+  memberPhone        String
+  memberEmail        String?
+  pharmacyName       String
+  pharmacyAddress    String
+  pharmacyPhone      String?
+  otp                String             // pickup OTP
+  medications        Json               // array of { name, qty, dosage }
+  status             PrescriptionStatus @default(SENT_TO_PHARMACY)
+  sentToPharmacyAt   DateTime           // T0 — drives T+6h trigger
+  triggerSentAt      DateTime?
+  retrySentAt        DateTime?
+  lastResponseAt     DateTime?
+  lastResponseChoice String?            // "RESEND_DETAILS" | "PICK_LATER" | "CHANGE_PHARMACY" | "CANCEL" | ...
+  cancelReason       String?
+  rerouteReason      String?
+  pickedUpAt         DateTime?
+  flagged            Boolean            @default(false)
+  flagReason         String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  events             PrescriptionEvent[]
+
+  @@index([memberRef])
+  @@index([status])
+  @@index([sentToPharmacyAt])
+  @@map("prescriptions")
+}
+
+model PrescriptionEvent {
+  id              String                @id @default(cuid())
+  prescriptionId  String
+  type            PrescriptionEventType
+  channel         NotificationChannel?
+  staffId         String?               // null = system-triggered
+  payload         Json?                 // arbitrary context (option chosen, message body, etc.)
+  createdAt       DateTime              @default(now())
+
+  prescription    Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  staff           Staff?       @relation(fields: [staffId], references: [id])
+
+  @@index([prescriptionId, createdAt])
+  @@index([type])
+  @@map("prescription_events")
+}

@@ -5,6 +5,11 @@ import { Role } from './types';
 import Login from './pages/Login';
 import AppShell from './components/layout/AppShell';
 
+// Staff (prescription pickup tracking)
+import StaffLogin from './pages/staff/Login';
+import StaffDashboard from './pages/staff/Dashboard';
+import { useStaffAuthStore } from './store/staffAuthStore';
+
 // Enrollee
 import EnrolleeDashboard from './pages/enrollee/Dashboard';
 import EnrolleeGenerateOTP from './pages/enrollee/GenerateOTP';
@@ -26,6 +31,12 @@ import AdvocateFWACases from './pages/advocate/FWACases';
 import AdvocateProviderNetwork from './pages/advocate/ProviderNetwork';
 import AdvocateCommunicationLog from './pages/advocate/CommunicationLog';
 import AdvocateReports from './pages/advocate/Reports';
+
+function StaffGuard({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useStaffAuthStore();
+  if (!isAuthenticated) return <Navigate to="/staff/login" replace />;
+  return <>{children}</>;
+}
 
 function RoleGuard({ children, allowedRole }: { children: React.ReactNode; allowedRole: Role }) {
   const { isAuthenticated, user } = useAuthStore();
@@ -78,6 +89,18 @@ export default function App() {
           <Route path="reports" element={<AdvocateReports />} />
           <Route index element={<Navigate to="dashboard" replace />} />
         </Route>
+
+        {/* Staff prescription pickup tracking portal */}
+        <Route path="/staff/login" element={<StaffLogin />} />
+        <Route
+          path="/staff/dashboard"
+          element={
+            <StaffGuard>
+              <StaffDashboard />
+            </StaffGuard>
+          }
+        />
+        <Route path="/staff" element={<Navigate to="/staff/dashboard" replace />} />
 
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>

@@ -4,6 +4,7 @@ import memberRouter from './member';
 import providerRouter from './provider';
 import advocateRouter from './advocate';
 import webhookRouter from './webhook';
+import staffRouter from './staff';
 
 const router = Router();
 
@@ -11,6 +12,7 @@ router.use('/auth', authRouter);
 router.use('/member', memberRouter);
 router.use('/provider', providerRouter);
 router.use('/advocate', advocateRouter);
+router.use('/staff', staffRouter);
 // Webhooks have their own raw body parsing needs — no JSON size limit
 router.use('/webhooks', webhookRouter);
 

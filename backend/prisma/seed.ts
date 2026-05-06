@@ -1,4 +1,5 @@
-import { PrismaClient, Role } from '@prisma/client';
+import { PrismaClient, Role, StaffRole, PrescriptionStatus } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const db = new PrismaClient();
 
@@ -95,7 +96,56 @@ async function main() {
     },
   });
 
+  // Seed staff (prescription pickup tracking portal)
+  const staffPassword = process.env.SEED_STAFF_PASSWORD ?? 'Leadway@2026';
+  const staffHash = await bcrypt.hash(staffPassword, 12);
+  await db.staff.upsert({
+    where: { email: 'pharmacy.ops@leadway.com' },
+    update: { passwordHash: staffHash },
+    create: {
+      email: 'pharmacy.ops@leadway.com',
+      fullName: 'Demo Pharmacy Ops',
+      role: StaffRole.PHARMACY_OPS,
+      passwordHash: staffHash,
+    },
+  });
+  await db.staff.upsert({
+    where: { email: 'care.manager@leadway.com' },
+    update: { passwordHash: staffHash },
+    create: {
+      email: 'care.manager@leadway.com',
+      fullName: 'Demo Care Manager',
+      role: StaffRole.CARE_MANAGER,
+      passwordHash: staffHash,
+    },
+  });
+
+  // Seed a sample prescription that's been waiting >6h to exercise the sweep.
+  await db.prescription.upsert({
+    where: { prescriptionRef: 'RX-2026-DEMO-001' },
+    update: {},
+    create: {
+      prescriptionRef: 'RX-2026-DEMO-001',
+      memberRef: member.memberRef,
+      memberFirstName: member.firstName,
+      memberLastName: member.lastName,
+      memberPhone: member.phone,
+      memberEmail: member.email,
+      pharmacyName: 'HealthPlus Lekki',
+      pharmacyAddress: '21 Admiralty Way, Lekki Phase 1, Lagos',
+      pharmacyPhone: '+2348100000050',
+      otp: '482910',
+      medications: [
+        { name: 'Amoxicillin 500mg', qty: 21, dosage: '1 capsule × 3 daily' },
+        { name: 'Paracetamol 1g', qty: 10, dosage: 'as needed' },
+      ],
+      status: PrescriptionStatus.SENT_TO_PHARMACY,
+      sentToPharmacyAt: new Date(Date.now() - 7 * 60 * 60 * 1000),
+    },
+  });
+
   console.log('Seed complete.');
+  console.log(`  Staff demo login: pharmacy.ops@leadway.com / ${staffPassword}`);
 }
 
 main()
