@@ -1,7 +1,13 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { db } from '../config/database';
-import { generateAuthOTP, verifyAuthOTP } from '../services/otp.service';
+import {
+  generateAuthOTP,
+  verifyAuthOTP,
+  generateProviderAuthOTP,
+  verifyProviderAuthOTP,
+} from '../services/otp.service';
+import { sendEmail, sendWhatsAppMessage } from '../services/notification.service';
 import {
   signAccessToken,
   signProviderAccessToken,
@@ -20,6 +26,7 @@ import {
   refreshTokenSchema,
   loginDobSchema,
   providerLoginSchema,
+  providerVerifyOtpSchema,
 } from '../validators/auth.validator';
 import { authenticateByDob, PrognosisUpstreamError } from '../services/member.service';
 import {
@@ -262,11 +269,87 @@ router.post(
   },
 );
 
-// POST /api/auth/provider-login — wellness provider login
-// Mirrors Prognosis's POST /api/WellnessBenefit/WellnessProviderLogIn:
-//   { email, password } -> { token, expires_in, provider }
-// We mint our own JWT (so requireAuth, revocation, and TTL stay under our
-// control) and upsert a local providers row keyed off the Prognosis id.
+// Provider has already verified an OTP today → no second factor required.
+function otpVerifiedToday(lastOtpVerifiedAt: Date | null): boolean {
+  if (!lastOtpVerifiedAt) return false;
+  const now = new Date();
+  return (
+    lastOtpVerifiedAt.getUTCFullYear() === now.getUTCFullYear() &&
+    lastOtpVerifiedAt.getUTCMonth() === now.getUTCMonth() &&
+    lastOtpVerifiedAt.getUTCDate() === now.getUTCDate()
+  );
+}
+
+function maskEmail(email: string): string {
+  const [user, domain] = email.split('@');
+  if (!domain) return '***';
+  const head = user.slice(0, 2);
+  return `${head}${'*'.repeat(Math.max(1, user.length - 2))}@${domain}`;
+}
+
+function maskPhone(phone: string): string {
+  if (phone.length < 4) return '***';
+  return `${'*'.repeat(phone.length - 4)}${phone.slice(-4)}`;
+}
+
+type ProviderRow = Awaited<ReturnType<typeof db.provider.findUnique>>;
+
+function buildProviderJwt(provider: NonNullable<ProviderRow>, emailKey: string) {
+  const displayName =
+    provider.name ?? provider.facility ?? provider.gymName ?? emailKey;
+  const jti = generateSecureToken(16);
+  const accessToken = signProviderAccessToken({
+    sub: provider.id,
+    role: Role.PROVIDER,
+    sessionId: jti,
+    jti,
+    email: provider.email ?? emailKey,
+    name: displayName,
+    facility: provider.facility ?? provider.gymName ?? displayName,
+  });
+  return {
+    token: accessToken,
+    expires_in: PROVIDER_TOKEN_TTL_SECONDS,
+    provider: {
+      id: provider.id,
+      email: provider.email,
+      name: displayName,
+      role: 'provider' as const,
+      facility: provider.facility ?? provider.gymName ?? displayName,
+      phone: provider.phone,
+    },
+  };
+}
+
+// Send the 2FA OTP via email (always) and WhatsApp (if a phone is on file).
+// Best-effort: failures are logged but don't fail the response — the OTP is
+// stored in our DB so the provider can retry if delivery is delayed.
+async function dispatchProviderOtp(provider: NonNullable<ProviderRow>, otp: string): Promise<void> {
+  const subject = 'Your Leadway Wellness Provider Sign-in Code';
+  const body =
+    `Your one-time sign-in code is: *${otp}*\n\n` +
+    `It expires in 10 minutes. Do not share this code with anyone.\n\n` +
+    `If you did not attempt to sign in, please contact Leadway immediately.`;
+
+  if (provider.email) {
+    sendEmail({ to: provider.email, subject, body, emailType: 'PROVIDER_AUTH_OTP' }).catch(() => {});
+  }
+  if (provider.phone) {
+    const sms =
+      `Leadway Wellness sign-in code: ${otp} (valid 10 min). ` +
+      `Do not share. If you didn't request this, contact Leadway.`;
+    sendWhatsAppMessage(provider.phone, sms).catch(() => {});
+  }
+}
+
+// POST /api/auth/provider-login — wellness provider login (step 1 of 2-step daily 2FA)
+//
+//   { email, password } ->
+//     - { token, expires_in, provider }              if OTP already verified today
+//     - { requiresOtp: true, deliveryHint, expiresAt } otherwise
+//
+// We mint our own JWT so requireAuth, revocation, and TTL stay under portal
+// control. Local providers row is upserted keyed off the Prognosis providerCode.
 router.post(
   '/provider-login',
   authRateLimiter,
@@ -285,7 +368,11 @@ router.post(
     //    account — verify with bcrypt and skip the upstream call.
     const localProvider = await db.provider.findUnique({ where: { email: emailKey } });
 
+    let provider: NonNullable<ProviderRow>;
+    let authSource: 'local' | 'prognosis';
+
     if (localProvider && localProvider.passwordHash !== PROGNOSIS_MANAGED_MARKER) {
+      // Local-only admin account — verify with bcrypt and skip the upstream call.
       const ok = await bcrypt.compare(password, localProvider.passwordHash);
       if (!ok) {
         await logAudit({
@@ -299,127 +386,118 @@ router.post(
         res.status(401).json({ error: 'Invalid email or password', code: 'INVALID_CREDENTIALS' });
         return;
       }
-
-      const jti = generateSecureToken(16);
-      const accessToken = signProviderAccessToken({
-        sub: localProvider.id,
-        role: Role.PROVIDER,
-        sessionId: jti,
-        jti,
-        email: localProvider.email ?? emailKey,
-        name: localProvider.name ?? localProvider.gymName,
-        facility: localProvider.facility ?? localProvider.gymName,
-      });
-
-      await db.provider.update({
+      provider = await db.provider.update({
         where: { id: localProvider.id },
         data: { lastLoginAt: new Date(), lastLoginIp: ip },
       });
+      authSource = 'local';
+    } else {
 
+      // Authenticate upstream via Prognosis.
+      let upstreamProvider: Awaited<ReturnType<typeof loginWellnessProvider>>;
+      try {
+        upstreamProvider = await loginWellnessProvider(emailRaw, password);
+      } catch (err) {
+        if (err instanceof InvalidProviderCredentialsError) {
+          await logAudit({
+            action: 'AUTH_PROVIDER_LOGIN',
+            resource: 'auth',
+            ipAddress: ip,
+            userAgent,
+            status: 'FAILURE',
+            details: { reason: 'INVALID_CREDENTIALS' },
+          });
+          res.status(401).json({ error: 'Invalid email or password', code: 'INVALID_CREDENTIALS' });
+          return;
+        }
+        if (err instanceof PrognosisUpstreamError) {
+          await logAudit({
+            action: 'AUTH_PROVIDER_LOGIN',
+            resource: 'auth',
+            ipAddress: ip,
+            userAgent,
+            status: 'FAILURE',
+            details: { reason: 'UPSTREAM_ERROR' },
+          });
+          res.status(503).json({
+            error: 'Authentication service temporarily unavailable. Please try again.',
+            code: 'UPSTREAM_ERROR',
+          });
+          return;
+        }
+        throw err;
+      }
+
+      // Upsert local providers row keyed by Prognosis providerCode (which maps
+      // to our existing Provider.gymCode unique key).
+      const displayName = upstreamProvider.gymName || upstreamProvider.providerCode;
+      provider = await db.provider.upsert({
+        where: { gymCode: upstreamProvider.providerCode },
+        create: {
+          gymCode: upstreamProvider.providerCode,
+          prognosisId: upstreamProvider.providerCode,
+          gymName: displayName,
+          facility: displayName,
+          email: emailKey,
+          lga: 'Unknown',
+          passwordHash: PROGNOSIS_MANAGED_MARKER,
+          lastLoginAt: new Date(),
+          lastLoginIp: ip,
+        },
+        update: {
+          prognosisId: upstreamProvider.providerCode,
+          gymName: displayName,
+          facility: displayName,
+          email: emailKey,
+          lastLoginAt: new Date(),
+          lastLoginIp: ip,
+        },
+      });
+      authSource = 'prognosis';
+    }
+
+    // Daily 2FA gate. If the provider already passed OTP today, mint a full
+    // session token immediately. Otherwise generate an OTP, send it via email
+    // and WhatsApp, and return a 'requiresOtp' response.
+    if (otpVerifiedToday(provider.lastOtpVerifiedAt)) {
       await logAudit({
-        userId: localProvider.id,
+        userId: provider.id,
         userRole: 'PROVIDER',
         action: 'AUTH_PROVIDER_LOGIN',
         resource: 'auth',
         ipAddress: ip,
         userAgent,
         status: 'SUCCESS',
-        details: { authSource: 'local' },
+        details: { authSource, otpSkipped: true },
       });
+      res.json(buildProviderJwt(provider, emailKey));
+      return;
+    }
 
-      res.json({
-        token: accessToken,
-        expires_in: PROVIDER_TOKEN_TTL_SECONDS,
-        provider: {
-          id: localProvider.id,
-          email: localProvider.email,
-          name: localProvider.name ?? localProvider.gymName,
-          role: 'provider',
-          facility: localProvider.facility ?? localProvider.gymName,
-          phone: localProvider.phone,
-        },
+    if (!provider.email) {
+      // We require an email on file to deliver the OTP. The upstream payload
+      // doesn't include one, so we backfill from the user-supplied email
+      // (which we just authenticated) on first login above. If we still
+      // somehow lack one, fail loudly rather than silently mint a session.
+      await logAudit({
+        userId: provider.id,
+        userRole: 'PROVIDER',
+        action: 'AUTH_PROVIDER_LOGIN',
+        resource: 'auth',
+        ipAddress: ip,
+        userAgent,
+        status: 'FAILURE',
+        details: { reason: 'MISSING_PROVIDER_EMAIL' },
+      });
+      res.status(500).json({
+        error: 'Provider record is missing a delivery email. Contact support.',
+        code: 'MISSING_PROVIDER_EMAIL',
       });
       return;
     }
 
-    // 2) Otherwise authenticate upstream via Prognosis.
-    let upstreamProvider: Awaited<ReturnType<typeof loginWellnessProvider>>;
-    try {
-      upstreamProvider = await loginWellnessProvider(emailRaw, password);
-    } catch (err) {
-      if (err instanceof InvalidProviderCredentialsError) {
-        await logAudit({
-          action: 'AUTH_PROVIDER_LOGIN',
-          resource: 'auth',
-          ipAddress: ip,
-          userAgent,
-          status: 'FAILURE',
-          details: { reason: 'INVALID_CREDENTIALS' },
-        });
-        res.status(401).json({ error: 'Invalid email or password', code: 'INVALID_CREDENTIALS' });
-        return;
-      }
-      if (err instanceof PrognosisUpstreamError) {
-        await logAudit({
-          action: 'AUTH_PROVIDER_LOGIN',
-          resource: 'auth',
-          ipAddress: ip,
-          userAgent,
-          status: 'FAILURE',
-          details: { reason: 'UPSTREAM_ERROR' },
-        });
-        res.status(503).json({
-          error: 'Authentication service temporarily unavailable. Please try again.',
-          code: 'UPSTREAM_ERROR',
-        });
-        return;
-      }
-      throw err;
-    }
-
-    // 3) Upsert local providers row keyed by Prognosis id. Synthesise required
-    //    legacy fields (gymCode, gymName, lga) from the upstream payload so the
-    //    existing schema constraints stay satisfied.
-    const synthesizedGymCode = `PRG-${upstreamProvider.id}`.slice(0, 64);
-    const displayName = upstreamProvider.facility || upstreamProvider.name || upstreamProvider.email;
-
-    const provider = await db.provider.upsert({
-      where: { prognosisId: upstreamProvider.id },
-      create: {
-        prognosisId: upstreamProvider.id,
-        gymCode: synthesizedGymCode,
-        gymName: displayName,
-        name: upstreamProvider.name || null,
-        facility: upstreamProvider.facility || null,
-        email: emailKey,
-        phone: upstreamProvider.phone,
-        lga: 'Unknown',
-        passwordHash: PROGNOSIS_MANAGED_MARKER,
-        lastLoginAt: new Date(),
-        lastLoginIp: ip,
-      },
-      update: {
-        // Refresh the snapshot fields on every login.
-        name: upstreamProvider.name || null,
-        facility: upstreamProvider.facility || null,
-        email: emailKey,
-        phone: upstreamProvider.phone,
-        gymName: displayName,
-        lastLoginAt: new Date(),
-        lastLoginIp: ip,
-      },
-    });
-
-    const jti = generateSecureToken(16);
-    const accessToken = signProviderAccessToken({
-      sub: provider.id,
-      role: Role.PROVIDER,
-      sessionId: jti,
-      jti,
-      email: provider.email ?? emailKey,
-      name: provider.name ?? displayName,
-      facility: provider.facility ?? displayName,
-    });
+    const { otp, expiresAt } = await generateProviderAuthOTP(provider.email, ip);
+    await dispatchProviderOtp(provider, otp);
 
     await logAudit({
       userId: provider.id,
@@ -429,21 +507,73 @@ router.post(
       ipAddress: ip,
       userAgent,
       status: 'SUCCESS',
-      details: { authSource: 'prognosis', prognosisId: upstreamProvider.id },
+      details: { authSource, otpSent: true },
     });
 
     res.json({
-      token: accessToken,
-      expires_in: PROVIDER_TOKEN_TTL_SECONDS,
-      provider: {
-        id: provider.id,
-        email: provider.email,
-        name: provider.name ?? displayName,
-        role: 'provider',
-        facility: provider.facility ?? displayName,
-        phone: provider.phone,
+      requiresOtp: true,
+      email: provider.email,
+      deliveryHint: {
+        email: maskEmail(provider.email),
+        phone: provider.phone ? maskPhone(provider.phone) : null,
       },
+      expiresAt,
     });
+  },
+);
+
+// POST /api/auth/provider-verify-otp — step 2 of daily 2FA
+// Body: { email, otp }
+// On success: marks lastOtpVerifiedAt = now and returns the full session JWT.
+router.post(
+  '/provider-verify-otp',
+  authRateLimiter,
+  validate(providerVerifyOtpSchema),
+  async (req: Request, res: Response): Promise<void> => {
+    const { email, otp } = req.body as { email: string; otp: string };
+    const ip = req.ip ?? 'unknown';
+    const userAgent = req.headers['user-agent'] ?? '';
+    const emailKey = email.trim().toLowerCase();
+
+    const result = await verifyProviderAuthOTP(emailKey, otp);
+    if (!result.valid) {
+      await logAudit({
+        action: 'AUTH_PROVIDER_OTP_VERIFY',
+        resource: 'auth',
+        ipAddress: ip,
+        userAgent,
+        status: 'FAILURE',
+        details: { reason: result.reason },
+      });
+      const statusCode = result.reason === 'MAX_ATTEMPTS' ? 429 : 401;
+      res.status(statusCode).json({ error: 'OTP verification failed', code: result.reason });
+      return;
+    }
+
+    const provider = await db.provider.findUnique({ where: { email: emailKey } });
+    if (!provider) {
+      // Shouldn't happen — OTP could only have been issued for an existing
+      // provider — but guard anyway. Don't leak which arm failed.
+      res.status(401).json({ error: 'OTP verification failed', code: 'INVALID' });
+      return;
+    }
+
+    const updated = await db.provider.update({
+      where: { id: provider.id },
+      data: { lastOtpVerifiedAt: new Date() },
+    });
+
+    await logAudit({
+      userId: updated.id,
+      userRole: 'PROVIDER',
+      action: 'AUTH_PROVIDER_OTP_VERIFY',
+      resource: 'auth',
+      ipAddress: ip,
+      userAgent,
+      status: 'SUCCESS',
+    });
+
+    res.json(buildProviderJwt(updated, emailKey));
   },
 );
 

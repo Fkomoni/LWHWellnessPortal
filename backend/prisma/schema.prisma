@@ -129,6 +129,10 @@ model Provider {
   passwordHash String         @default("!prognosis-managed!")
   lastLoginAt  DateTime?
   lastLoginIp  String?
+  // Daily 2FA: timestamp of the most recent successful PROVIDER_AUTH OTP.
+  // If this falls on the current UTC day, /provider-login skips OTP and mints
+  // a full session immediately.
+  lastOtpVerifiedAt DateTime?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 

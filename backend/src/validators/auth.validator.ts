@@ -32,6 +32,12 @@ export const providerLoginSchema = z.object({
   password: z.string().min(1, 'Password is required').max(256),
 });
 
+// Provider daily 2FA — OTP sent to the email above and the provider's phone.
+export const providerVerifyOtpSchema = z.object({
+  email: z.string().trim().min(3).max(254).email('Enter a valid email address'),
+  otp: z.string().length(6, 'OTP must be exactly 6 digits').regex(/^\d{6}$/, 'OTP must be numeric'),
+});
+
 // Member ID + DOB primary login (ENROLLEE only)
 export const loginDobSchema = z.object({
   // Allows the literal '/' Prognosis uses in IDs (e.g. "21000645/0").

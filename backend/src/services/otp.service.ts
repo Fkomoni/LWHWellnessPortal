@@ -72,6 +72,63 @@ export async function verifyAuthOTP(phone: string, otp: string): Promise<OtpVeri
   return { valid: true, memberId: record.memberId ?? undefined };
 }
 
+// ─── Provider daily 2FA OTP ──────────────────────────────────────────────────
+//
+// We reuse the existing OtpRecord table. The Prisma `phone` column is repurposed
+// as the provider identifier (we key by the provider's email since that's the
+// canonical login id). Lookups stay fast — `@@index([phone, purpose])` covers it.
+
+export async function generateProviderAuthOTP(
+  providerEmail: string,
+  ipAddress: string,
+): Promise<OtpResult> {
+  const otp = generateSecureOTP(6);
+  const otpHash = await hashOTP(otp);
+  // Provider 2FA OTP TTL: 10 minutes. Shorter than AUTH OTP because the
+  // provider just authenticated with a password — they're at the keyboard.
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+  await db.otpRecord.updateMany({
+    where: { phone: providerEmail, purpose: OtpPurpose.PROVIDER_AUTH, usedAt: null, expiresAt: { gt: new Date() } },
+    data: { expiresAt: new Date() },
+  });
+
+  const record = await db.otpRecord.create({
+    data: { phone: providerEmail, otpHash, purpose: OtpPurpose.PROVIDER_AUTH, expiresAt, ipAddress },
+  });
+
+  return { otp, expiresAt, otpId: record.id };
+}
+
+export async function verifyProviderAuthOTP(
+  providerEmail: string,
+  otp: string,
+): Promise<OtpVerifyResult> {
+  const maxAttempts = parseInt(env.OTP_MAX_ATTEMPTS, 10);
+
+  const record = await db.otpRecord.findFirst({
+    where: {
+      phone: providerEmail,
+      purpose: OtpPurpose.PROVIDER_AUTH,
+      usedAt: null,
+      expiresAt: { gt: new Date() },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (!record) return { valid: false, reason: 'NOT_FOUND' };
+  if (record.attempts >= maxAttempts) return { valid: false, reason: 'MAX_ATTEMPTS' };
+
+  await db.otpRecord.update({ where: { id: record.id }, data: { attempts: { increment: 1 } } });
+
+  const match = await verifyOTPHash(otp, record.otpHash);
+  if (!match) return { valid: false, reason: 'INVALID' };
+
+  await db.otpRecord.update({ where: { id: record.id }, data: { usedAt: new Date() } });
+
+  return { valid: true };
+}
+
 export async function verifySessionOTP(
   otpCode: string,
   providedByProvider: boolean,

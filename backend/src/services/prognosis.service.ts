@@ -686,11 +686,9 @@ export async function generatePrognosisSessionOtp(
 // ─── Wellness provider login ─────────────────────────────────────────────────
 
 export type PrognosisProvider = {
-  id: string;
-  email: string;
-  name: string;
-  facility: string;
-  phone: string | null;
+  providerCode: string; // canonical Prognosis id (matches our Provider.gymCode)
+  gymName: string;
+  upstreamToken: string; // Prognosis-issued bearer (we don't return it to the client)
 };
 
 export class InvalidProviderCredentialsError extends Error {
@@ -722,25 +720,30 @@ function detectProviderLoginFailure(data: unknown): string | null {
 /**
  * Authenticate a wellness provider against Prognosis.
  *
+ *   POST {PROGNOSIS_API_URL}/api/ApiUsers/ProviderLogin
+ *   { Username, Password }
+ *   -> { token, providerCode, gymName }
+ *
  * IMPORTANT contract:
  *  - throws PrognosisUpstreamError on network/5xx/non-JSON — caller must 503
  *  - throws InvalidProviderCredentialsError on 401 OR 200-OK failure body
  *  - never fabricates a provider — if the upstream success body is missing
- *    an identifying id field, treat as invalid credentials
+ *    providerCode, treats as invalid credentials (don't manufacture a row
+ *    out of the username the user typed)
  *
- * NOTE: pass the user's original-cased email through to Prognosis. Lowercasing
+ * NOTE: pass the user's original-cased username through to Prognosis. Lowercasing
  * eagerly upstream causes "valid login mysteriously fails" bugs.
  */
 export async function loginWellnessProvider(
-  emailRaw: string,
+  usernameRaw: string,
   password: string,
 ): Promise<PrognosisProvider> {
   let res: Response;
   try {
-    res = await fetch(`${env.PROGNOSIS_API_URL}/api/WellnessBenefit/WellnessProviderLogIn`, {
+    res = await fetch(`${env.PROGNOSIS_API_URL}/api/ApiUsers/ProviderLogin`, {
       method: 'POST',
       headers: COMMON_HEADERS,
-      body: JSON.stringify({ Email: emailRaw, Password: password }),
+      body: JSON.stringify({ Username: usernameRaw, Password: password }),
     });
   } catch (err) {
     throw new PrognosisUpstreamError(`network error: ${String(err)}`);
@@ -783,42 +786,24 @@ export async function loginWellnessProvider(
     throw new InvalidProviderCredentialsError('empty success body');
   }
 
-  // The provider object may be nested under "provider"/"Provider" or be the body itself.
-  const providerObj: Record<string, unknown> =
-    (typeof record['provider'] === 'object' && record['provider'] !== null
-      ? record['provider'] as Record<string, unknown>
-      : null) ??
-    (typeof record['Provider'] === 'object' && record['Provider'] !== null
-      ? record['Provider'] as Record<string, unknown>
-      : null) ??
-    record;
-
   const str = (keys: string[]): string => {
     for (const k of keys) {
-      const v = providerObj[k];
+      const v = record[k];
       if (typeof v === 'string' && v.trim()) return v.trim();
     }
     return '';
   };
 
-  const id = str(['id', 'Id', 'ID', 'providerId', 'ProviderId', 'provider_id']);
-  if (!id) {
+  const providerCode = str(['providerCode', 'ProviderCode', 'provider_code', 'gymCode', 'GymCode']);
+  if (!providerCode) {
     // Never fabricate a provider from the request payload — if upstream didn't
     // identify the provider, the credentials are invalid.
-    logger.warn('prognosis.provider.login: missing id in success body', { body: rawBody });
-    throw new InvalidProviderCredentialsError('missing id in upstream response');
+    logger.warn('prognosis.provider.login: missing providerCode in success body', { body: rawBody });
+    throw new InvalidProviderCredentialsError('missing providerCode in upstream response');
   }
 
-  const email = str(['email', 'Email', 'EmailAddress']);
-  const name = str(['name', 'Name', 'fullName', 'FullName', 'displayName']);
-  const facility = str(['facility', 'Facility', 'facilityName', 'FacilityName', 'clinic', 'Clinic']);
-  const phoneVal = str(['phone', 'Phone', 'phoneNumber', 'PhoneNumber']);
+  const gymName = str(['gymName', 'GymName', 'gym_name', 'providerName', 'ProviderName']);
+  const upstreamToken = str(['token', 'Token', 'access_token', 'accessToken']);
 
-  return {
-    id,
-    email: email || emailRaw,
-    name,
-    facility,
-    phone: phoneVal || null,
-  };
+  return { providerCode, gymName: gymName || providerCode, upstreamToken };
 }

@@ -9,9 +9,9 @@ import OTPInput from '../components/ui/OTPInput';
 import { Dumbbell, UserCircle, Shield, ChevronRight, ArrowLeft, Loader2 } from 'lucide-react';
 import apiClient from '../lib/apiClient';
 
-// ENROLLEE → Member ID + DOB; PROVIDER → email + password (Prognosis-backed);
-// ADVOCATE → phone + OTP.
-type Step = 'role' | 'dob' | 'credentials' | 'phone' | 'otp';
+// ENROLLEE → Member ID + DOB; PROVIDER → email + password (Prognosis-backed) +
+// daily 2FA OTP; ADVOCATE → phone + OTP.
+type Step = 'role' | 'dob' | 'credentials' | 'provider-otp' | 'phone' | 'otp';
 
 const roles: Array<{ value: Role; icon: React.ReactNode; label: string; sub: string; description: string }> = [
   {
@@ -57,6 +57,8 @@ export default function Login() {
   // PROVIDER fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [providerOtp, setProviderOtp] = useState('');
+  const [providerOtpHint, setProviderOtpHint] = useState<{ email: string; phone: string | null } | null>(null);
 
   // ADVOCATE fields
   const [phone, setPhone] = useState('');
@@ -98,33 +100,49 @@ export default function Login() {
 
   // ── PROVIDER: Email + Password (authenticated upstream by Prognosis) ─────
 
+  type ProviderSession = {
+    token: string;
+    expires_in: number;
+    provider: {
+      id: string;
+      email: string;
+      name: string;
+      role: 'provider';
+      facility: string;
+      phone: string | null;
+    };
+  };
+  type ProviderLoginResponse =
+    | ProviderSession
+    | { requiresOtp: true; email: string; deliveryHint: { email: string; phone: string | null }; expiresAt: string };
+
+  const completeProviderLogin = (data: ProviderSession) => {
+    const u: User = {
+      id: data.provider.id,
+      firstName: data.provider.name?.split(' ')[0] ?? data.provider.name ?? 'Provider',
+      lastName: data.provider.name?.split(' ').slice(1).join(' ') ?? '',
+      memberRef: data.provider.email,
+      role: 'PROVIDER',
+    };
+    setAuth(u, data.token);
+    toast.success(`Welcome, ${data.provider.name || data.provider.email}`);
+    navigate(redirectMap.PROVIDER);
+  };
+
   const providerLoginMutation = useMutation({
     mutationFn: async ({ email, password }: { email: string; password: string }) => {
       const { data } = await apiClient.post('/auth/provider-login', { email, password });
-      return data as {
-        token: string;
-        expires_in: number;
-        provider: {
-          id: string;
-          email: string;
-          name: string;
-          role: 'provider';
-          facility: string;
-          phone: string | null;
-        };
-      };
+      return data as ProviderLoginResponse;
     },
     onSuccess: (data) => {
-      const u: User = {
-        id: data.provider.id,
-        firstName: data.provider.name?.split(' ')[0] ?? data.provider.name ?? 'Provider',
-        lastName: data.provider.name?.split(' ').slice(1).join(' ') ?? '',
-        memberRef: data.provider.email,
-        role: 'PROVIDER',
-      };
-      setAuth(u, data.token);
-      toast.success(`Welcome, ${data.provider.name || data.provider.email}`);
-      navigate(redirectMap.PROVIDER);
+      if ('requiresOtp' in data && data.requiresOtp) {
+        setProviderOtpHint(data.deliveryHint);
+        setProviderOtp('');
+        setStep('provider-otp');
+        toast.success('Verification code sent — check your email and phone.');
+        return;
+      }
+      completeProviderLogin(data as ProviderSession);
     },
     onError: (err) => {
       if (axios.isAxiosError(err)) {
@@ -143,6 +161,29 @@ export default function Login() {
     const p = password;
     if (!e || !p) { toast.error('Enter email and password'); return; }
     providerLoginMutation.mutate({ email: e, password: p });
+  };
+
+  const providerVerifyOtpMutation = useMutation({
+    mutationFn: async ({ email, otp }: { email: string; otp: string }) => {
+      const { data } = await apiClient.post('/auth/provider-verify-otp', { email, otp });
+      return data as ProviderSession;
+    },
+    onSuccess: (data) => completeProviderLogin(data),
+    onError: (err) => {
+      if (axios.isAxiosError(err)) {
+        const code = err.response?.data?.code as string | undefined;
+        if (code === 'MAX_ATTEMPTS') toast.error('Too many failed attempts. Sign in again to receive a new code.');
+        else toast.error('Invalid or expired code. Please try again.');
+      } else {
+        toast.error('Network error. Please try again.');
+      }
+      setProviderOtp('');
+    },
+  });
+
+  const handleProviderVerifyOtp = () => {
+    if (providerOtp.length !== 6) return;
+    providerVerifyOtpMutation.mutate({ email: email.trim().toLowerCase(), otp: providerOtp });
   };
 
   // ── ADVOCATE: Phone + OTP ────────────────────────────────────────────────
@@ -422,6 +463,45 @@ export default function Login() {
                     <><Loader2 size={16} className="animate-spin" /> Signing in...</>
                   ) : (
                     'Sign In'
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── PROVIDER: daily 2FA OTP ── */}
+          {step === 'provider-otp' && selectedRoleMeta && (
+            <div className="animate-fade-in">
+              <button
+                onClick={() => { setStep('credentials'); setProviderOtp(''); setProviderOtpHint(null); }}
+                className="flex items-center gap-1.5 text-white/50 hover:text-white text-sm mb-8 transition-colors"
+              >
+                <ArrowLeft size={14} /> Back to sign in
+              </button>
+              <div className="text-center mb-8">
+                <h2 className="text-xl font-bold text-white">Verify it's you</h2>
+                <p className="text-white/50 text-sm mt-1">
+                  We sent a 6-digit code to{' '}
+                  <span className="text-white font-mono">{providerOtpHint?.email}</span>
+                  {providerOtpHint?.phone && (
+                    <> and <span className="text-white font-mono">{providerOtpHint.phone}</span></>
+                  )}
+                  . You'll only need this once today.
+                </p>
+              </div>
+              <div className="space-y-6">
+                <OTPInput value={providerOtp} onChange={setProviderOtp} disabled={providerVerifyOtpMutation.isPending} />
+                <button
+                  onClick={handleProviderVerifyOtp}
+                  disabled={providerVerifyOtpMutation.isPending || providerOtp.length !== 6}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-brand-red
+                             text-white font-semibold rounded-xl hover:bg-red-700 transition-colors
+                             disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                >
+                  {providerVerifyOtpMutation.isPending ? (
+                    <><Loader2 size={16} className="animate-spin" /> Verifying...</>
+                  ) : (
+                    'Verify & Sign In'
                   )}
                 </button>
               </div>
