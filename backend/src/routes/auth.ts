@@ -1,16 +1,36 @@
 import { Router, Request, Response } from 'express';
+import bcrypt from 'bcryptjs';
 import { db } from '../config/database';
 import { generateAuthOTP, verifyAuthOTP } from '../services/otp.service';
-import { signAccessToken, issueRefreshToken, rotateRefreshToken, revokeAllTokens } from '../services/jwt.service';
+import {
+  signAccessToken,
+  signProviderAccessToken,
+  issueRefreshToken,
+  rotateRefreshToken,
+  revokeAllTokens,
+  PROVIDER_TOKEN_TTL_SECONDS,
+} from '../services/jwt.service';
 import { logAudit } from '../services/audit.service';
 import { validate } from '../middleware/validate';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { authRateLimiter, otpGenerateRateLimiter, dobAuthRateLimiter } from '../middleware/rateLimiter';
-import { requestOtpSchema, verifyOtpSchema, refreshTokenSchema, loginDobSchema } from '../validators/auth.validator';
+import {
+  requestOtpSchema,
+  verifyOtpSchema,
+  refreshTokenSchema,
+  loginDobSchema,
+  providerLoginSchema,
+} from '../validators/auth.validator';
 import { authenticateByDob, PrognosisUpstreamError } from '../services/member.service';
+import {
+  loginWellnessProvider,
+  InvalidProviderCredentialsError,
+} from '../services/prognosis.service';
 import { env } from '../config/env';
 import { generateSecureToken } from '../utils/crypto';
 import { Role } from '@prisma/client';
+
+const PROGNOSIS_MANAGED_MARKER = '!prognosis-managed!';
 
 const router = Router();
 
@@ -237,6 +257,191 @@ router.post(
         lastName: member.lastName,
         memberRef: member.memberRef,
         role: member.role,
+      },
+    });
+  },
+);
+
+// POST /api/auth/provider-login — wellness provider login
+// Mirrors Prognosis's POST /api/WellnessBenefit/WellnessProviderLogIn:
+//   { email, password } -> { token, expires_in, provider }
+// We mint our own JWT (so requireAuth, revocation, and TTL stay under our
+// control) and upsert a local providers row keyed off the Prognosis id.
+router.post(
+  '/provider-login',
+  authRateLimiter,
+  validate(providerLoginSchema),
+  async (req: Request, res: Response): Promise<void> => {
+    const { email, password } = req.body as { email: string; password: string };
+    const ip = req.ip ?? 'unknown';
+    const userAgent = req.headers['user-agent'] ?? '';
+
+    // Lowercased for our DB lookup; original casing preserved for upstream call.
+    const emailKey = email.trim().toLowerCase();
+    const emailRaw = email.trim();
+
+    // 1) Local DB lookup. If we find a row whose passwordHash is a real bcrypt
+    //    hash (NOT the "!prognosis-managed!" marker), this is a local-only admin
+    //    account — verify with bcrypt and skip the upstream call.
+    const localProvider = await db.provider.findUnique({ where: { email: emailKey } });
+
+    if (localProvider && localProvider.passwordHash !== PROGNOSIS_MANAGED_MARKER) {
+      const ok = await bcrypt.compare(password, localProvider.passwordHash);
+      if (!ok) {
+        await logAudit({
+          action: 'AUTH_PROVIDER_LOGIN',
+          resource: 'auth',
+          ipAddress: ip,
+          userAgent,
+          status: 'FAILURE',
+          details: { reason: 'INVALID_LOCAL_PASSWORD' },
+        });
+        res.status(401).json({ error: 'Invalid email or password', code: 'INVALID_CREDENTIALS' });
+        return;
+      }
+
+      const jti = generateSecureToken(16);
+      const accessToken = signProviderAccessToken({
+        sub: localProvider.id,
+        role: Role.PROVIDER,
+        sessionId: jti,
+        jti,
+        email: localProvider.email ?? emailKey,
+        name: localProvider.name ?? localProvider.gymName,
+        facility: localProvider.facility ?? localProvider.gymName,
+      });
+
+      await db.provider.update({
+        where: { id: localProvider.id },
+        data: { lastLoginAt: new Date(), lastLoginIp: ip },
+      });
+
+      await logAudit({
+        userId: localProvider.id,
+        userRole: 'PROVIDER',
+        action: 'AUTH_PROVIDER_LOGIN',
+        resource: 'auth',
+        ipAddress: ip,
+        userAgent,
+        status: 'SUCCESS',
+        details: { authSource: 'local' },
+      });
+
+      res.json({
+        token: accessToken,
+        expires_in: PROVIDER_TOKEN_TTL_SECONDS,
+        provider: {
+          id: localProvider.id,
+          email: localProvider.email,
+          name: localProvider.name ?? localProvider.gymName,
+          role: 'provider',
+          facility: localProvider.facility ?? localProvider.gymName,
+          phone: localProvider.phone,
+        },
+      });
+      return;
+    }
+
+    // 2) Otherwise authenticate upstream via Prognosis.
+    let upstreamProvider: Awaited<ReturnType<typeof loginWellnessProvider>>;
+    try {
+      upstreamProvider = await loginWellnessProvider(emailRaw, password);
+    } catch (err) {
+      if (err instanceof InvalidProviderCredentialsError) {
+        await logAudit({
+          action: 'AUTH_PROVIDER_LOGIN',
+          resource: 'auth',
+          ipAddress: ip,
+          userAgent,
+          status: 'FAILURE',
+          details: { reason: 'INVALID_CREDENTIALS' },
+        });
+        res.status(401).json({ error: 'Invalid email or password', code: 'INVALID_CREDENTIALS' });
+        return;
+      }
+      if (err instanceof PrognosisUpstreamError) {
+        await logAudit({
+          action: 'AUTH_PROVIDER_LOGIN',
+          resource: 'auth',
+          ipAddress: ip,
+          userAgent,
+          status: 'FAILURE',
+          details: { reason: 'UPSTREAM_ERROR' },
+        });
+        res.status(503).json({
+          error: 'Authentication service temporarily unavailable. Please try again.',
+          code: 'UPSTREAM_ERROR',
+        });
+        return;
+      }
+      throw err;
+    }
+
+    // 3) Upsert local providers row keyed by Prognosis id. Synthesise required
+    //    legacy fields (gymCode, gymName, lga) from the upstream payload so the
+    //    existing schema constraints stay satisfied.
+    const synthesizedGymCode = `PRG-${upstreamProvider.id}`.slice(0, 64);
+    const displayName = upstreamProvider.facility || upstreamProvider.name || upstreamProvider.email;
+
+    const provider = await db.provider.upsert({
+      where: { prognosisId: upstreamProvider.id },
+      create: {
+        prognosisId: upstreamProvider.id,
+        gymCode: synthesizedGymCode,
+        gymName: displayName,
+        name: upstreamProvider.name || null,
+        facility: upstreamProvider.facility || null,
+        email: emailKey,
+        phone: upstreamProvider.phone,
+        lga: 'Unknown',
+        passwordHash: PROGNOSIS_MANAGED_MARKER,
+        lastLoginAt: new Date(),
+        lastLoginIp: ip,
+      },
+      update: {
+        // Refresh the snapshot fields on every login.
+        name: upstreamProvider.name || null,
+        facility: upstreamProvider.facility || null,
+        email: emailKey,
+        phone: upstreamProvider.phone,
+        gymName: displayName,
+        lastLoginAt: new Date(),
+        lastLoginIp: ip,
+      },
+    });
+
+    const jti = generateSecureToken(16);
+    const accessToken = signProviderAccessToken({
+      sub: provider.id,
+      role: Role.PROVIDER,
+      sessionId: jti,
+      jti,
+      email: provider.email ?? emailKey,
+      name: provider.name ?? displayName,
+      facility: provider.facility ?? displayName,
+    });
+
+    await logAudit({
+      userId: provider.id,
+      userRole: 'PROVIDER',
+      action: 'AUTH_PROVIDER_LOGIN',
+      resource: 'auth',
+      ipAddress: ip,
+      userAgent,
+      status: 'SUCCESS',
+      details: { authSource: 'prognosis', prognosisId: upstreamProvider.id },
+    });
+
+    res.json({
+      token: accessToken,
+      expires_in: PROVIDER_TOKEN_TTL_SECONDS,
+      provider: {
+        id: provider.id,
+        email: provider.email,
+        name: provider.name ?? displayName,
+        role: 'provider',
+        facility: provider.facility ?? displayName,
+        phone: provider.phone,
       },
     });
   },

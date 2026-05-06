@@ -21,6 +21,17 @@ export const refreshTokenSchema = z.object({
   refreshToken: z.string().min(32).max(256),
 });
 
+// Wellness provider login — email + password authenticated upstream by Prognosis.
+export const providerLoginSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .min(3)
+    .max(254)
+    .email('Enter a valid email address'),
+  password: z.string().min(1, 'Password is required').max(256),
+});
+
 // Member ID + DOB primary login (ENROLLEE only)
 export const loginDobSchema = z.object({
   // Allows the literal '/' Prognosis uses in IDs (e.g. "21000645/0").

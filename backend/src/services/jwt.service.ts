@@ -20,6 +20,26 @@ export function signAccessToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): strin
   } as jwt.SignOptions);
 }
 
+// Provider portal sessions: 8h TTL, extra claims, separate jti for revocation.
+export interface ProviderJwtPayload extends JwtPayload {
+  email: string;
+  name: string;
+  facility: string;
+  jti: string;
+}
+
+export const PROVIDER_TOKEN_TTL_SECONDS = 8 * 60 * 60;
+
+export function signProviderAccessToken(
+  payload: Omit<ProviderJwtPayload, 'iat' | 'exp'>,
+): string {
+  return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
+    expiresIn: PROVIDER_TOKEN_TTL_SECONDS,
+    issuer: 'lwh-wellness-portal',
+    audience: 'lwh-client',
+  } as jwt.SignOptions);
+}
+
 export function verifyAccessToken(token: string): JwtPayload {
   return jwt.verify(token, env.JWT_ACCESS_SECRET, {
     issuer: 'lwh-wellness-portal',

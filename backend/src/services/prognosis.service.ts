@@ -682,3 +682,143 @@ export async function generatePrognosisSessionOtp(
     sessionsRemaining,
   };
 }
+
+// ─── Wellness provider login ─────────────────────────────────────────────────
+
+export type PrognosisProvider = {
+  id: string;
+  email: string;
+  name: string;
+  facility: string;
+  phone: string | null;
+};
+
+export class InvalidProviderCredentialsError extends Error {
+  constructor(public readonly reason: string) {
+    super(`Invalid provider credentials: ${reason}`);
+    this.name = 'InvalidProviderCredentialsError';
+  }
+}
+
+// Prognosis sometimes returns HTTP 200 with a failure body (e.g. {status:false}
+// or the literal string "fail: ..."). Detect those before trusting the payload —
+// otherwise random credentials could mint a session.
+function detectProviderLoginFailure(data: unknown): string | null {
+  if (typeof data === 'string') {
+    return /fail|invalid|unauthor|incorrect|wrong/i.test(data) ? data : null;
+  }
+  if (typeof data !== 'object' || data === null) return null;
+  const obj = data as Record<string, unknown>;
+  if (obj['status'] === false || obj['Status'] === false || obj['success'] === false) {
+    const msg = obj['message'] ?? obj['Message'] ?? obj['error'] ?? 'Invalid credentials';
+    return typeof msg === 'string' ? msg : 'Invalid credentials';
+  }
+  if (typeof obj['status'] === 'string' && /^(fail|error|false|unauthor)/i.test(obj['status'])) {
+    return (typeof obj['message'] === 'string' ? obj['message'] : null) ?? (obj['status'] as string);
+  }
+  return null;
+}
+
+/**
+ * Authenticate a wellness provider against Prognosis.
+ *
+ * IMPORTANT contract:
+ *  - throws PrognosisUpstreamError on network/5xx/non-JSON — caller must 503
+ *  - throws InvalidProviderCredentialsError on 401 OR 200-OK failure body
+ *  - never fabricates a provider — if the upstream success body is missing
+ *    an identifying id field, treat as invalid credentials
+ *
+ * NOTE: pass the user's original-cased email through to Prognosis. Lowercasing
+ * eagerly upstream causes "valid login mysteriously fails" bugs.
+ */
+export async function loginWellnessProvider(
+  emailRaw: string,
+  password: string,
+): Promise<PrognosisProvider> {
+  let res: Response;
+  try {
+    res = await fetch(`${env.PROGNOSIS_API_URL}/api/WellnessBenefit/WellnessProviderLogIn`, {
+      method: 'POST',
+      headers: COMMON_HEADERS,
+      body: JSON.stringify({ Email: emailRaw, Password: password }),
+    });
+  } catch (err) {
+    throw new PrognosisUpstreamError(`network error: ${String(err)}`);
+  }
+
+  logger.info('prognosis.provider.login.http', { httpStatus: res.status });
+
+  if (res.status === 401 || res.status === 403) {
+    throw new InvalidProviderCredentialsError(`HTTP ${res.status}`);
+  }
+
+  if (res.status >= 500) {
+    throw new PrognosisUpstreamError(`HTTP ${res.status}`);
+  }
+
+  let rawBody: unknown;
+  try {
+    rawBody = await res.json();
+  } catch {
+    const text = await res.text().catch(() => '(unreadable)');
+    logger.error('prognosis.provider.login.error', { httpStatus: res.status, reason: 'non-JSON', body: text.slice(0, 500) });
+    throw new PrognosisUpstreamError(`HTTP ${res.status} non-JSON`);
+  }
+
+  // Detect 200-OK failure shape BEFORE checking res.ok — Prognosis sometimes
+  // returns 200 with {status:false,...}.
+  const failureMsg = detectProviderLoginFailure(rawBody);
+  if (failureMsg) {
+    logger.info('prognosis.provider.login: failure body', { msg: failureMsg });
+    throw new InvalidProviderCredentialsError(failureMsg);
+  }
+
+  if (!res.ok) {
+    logger.error('prognosis.provider.login.error', { httpStatus: res.status, body: rawBody });
+    throw new PrognosisUpstreamError(`HTTP ${res.status}`);
+  }
+
+  const record = unwrapBody(rawBody);
+  if (!record) {
+    throw new InvalidProviderCredentialsError('empty success body');
+  }
+
+  // The provider object may be nested under "provider"/"Provider" or be the body itself.
+  const providerObj: Record<string, unknown> =
+    (typeof record['provider'] === 'object' && record['provider'] !== null
+      ? record['provider'] as Record<string, unknown>
+      : null) ??
+    (typeof record['Provider'] === 'object' && record['Provider'] !== null
+      ? record['Provider'] as Record<string, unknown>
+      : null) ??
+    record;
+
+  const str = (keys: string[]): string => {
+    for (const k of keys) {
+      const v = providerObj[k];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+    return '';
+  };
+
+  const id = str(['id', 'Id', 'ID', 'providerId', 'ProviderId', 'provider_id']);
+  if (!id) {
+    // Never fabricate a provider from the request payload — if upstream didn't
+    // identify the provider, the credentials are invalid.
+    logger.warn('prognosis.provider.login: missing id in success body', { body: rawBody });
+    throw new InvalidProviderCredentialsError('missing id in upstream response');
+  }
+
+  const email = str(['email', 'Email', 'EmailAddress']);
+  const name = str(['name', 'Name', 'fullName', 'FullName', 'displayName']);
+  const facility = str(['facility', 'Facility', 'facilityName', 'FacilityName', 'clinic', 'Clinic']);
+  const phoneVal = str(['phone', 'Phone', 'phoneNumber', 'PhoneNumber']);
+
+  return {
+    id,
+    email: email || emailRaw,
+    name,
+    facility,
+    phone: phoneVal || null,
+  };
+}
